@@ -1,0 +1,26 @@
+{
+  email {$CADDY_EMAIL}
+}
+
+{$API_DOMAIN} {
+  # Security headers
+  header {
+    X-Content-Type-Options nosniff
+    X-Frame-Options DENY
+    X-XSS-Protection "1; mode=block"
+    Referrer-Policy strict-origin-when-cross-origin
+    -Server
+    -X-Powered-By
+  }
+
+  # API and admin routes go to the Node service
+  @app path /api/* /admin* /health
+  handle @app {
+    reverse_proxy api:3000
+  }
+
+  # Block everything else
+  handle {
+    respond "This is a private API endpoint. Public site: https://roitsystems.ca" 404
+  }
+}
