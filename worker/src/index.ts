@@ -30,11 +30,14 @@ async function main() {
   }
 }
 
-process.on('SIGTERM', async () => {
-  console.log('Worker shutting down');
+async function shutdown(signal: string) {
+  console.log(`Worker shutting down (${signal})`);
   await drainNats();
   process.exit(0);
-});
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 main().catch((err) => {
   console.error('Worker fatal error:', err);

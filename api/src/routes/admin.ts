@@ -1,16 +1,47 @@
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { listMessages, getMessage } from '../services/couchdb';
 
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 
+// HMAC key generated once per process lifetime.
+// Wrapping tokens in HMAC before timingSafeEqual ensures both buffers are
+// always equal-length (SHA-256 output), preventing length-based timing leaks.
+const HMAC_KEY = randomBytes(32);
+
+function hmac(value: string): Buffer {
+  return createHmac('sha256', HMAC_KEY).update(value).digest();
+}
+
 function requireAuth(request: FastifyRequest, reply: FastifyReply): boolean {
   const auth = request.headers.authorization;
-  if (!auth || auth !== `Bearer ${ADMIN_TOKEN}` || !ADMIN_TOKEN) {
+  const provided = auth?.startsWith('Bearer ') ? auth.slice(7) : '';
+
+  if (!ADMIN_TOKEN) {
+    reply.status(503).send({ error: 'Admin access not configured' });
+    return false;
+  }
+
+  const match = timingSafeEqual(hmac(provided), hmac(ADMIN_TOKEN));
+  if (!match) {
     reply.status(401).send({ error: 'Unauthorized' });
     return false;
   }
   return true;
 }
+
+// Per-route rate-limit config: applied because the global plugin is registered
+// with global:false in index.ts. 30 requests / 15 min per IP slows brute force
+// attempts against the admin token without blocking normal admin use.
+const adminRateLimit = {
+  config: {
+    rateLimit: {
+      max: 30,
+      timeWindow: '15 minutes',
+      errorResponseBuilder: () => ({ error: 'Too many requests. Try again later.' }),
+    },
+  },
+};
 
 const ADMIN_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -146,7 +177,7 @@ async function loadMessages() {
         <div class="card-header">
           <div>
             <div class="card-name">\${esc(m.name)}</div>
-            <div class="card-email">\${esc(m.email)}\${m.company ? ' · ' + esc(m.company) : ''}</div>
+            <div class="card-email">\${esc(m.email)}\${m.company ? ' \xb7 ' + esc(m.company) : ''}</div>
           </div>
           <span class="badge \${m.status}">\${m.status}</span>
         </div>
@@ -200,22 +231,18 @@ if (token) loadMessages();
 </body>
 </html>`;
 
-export const adminRoutes: FastifyPluginAsync = async (server) => {
-  // Serve the admin SPA (no auth required — auth happens client-side via token)
-  server.get('/admin', async (_request, reply) => {
-    return reply.type('text/html').send(ADMIN_HTML);
-  });
+export { ADMIN_HTML };
 
-  // API endpoints require Bearer token
-  server.get('/messages', async (request, reply) => {
+export const adminRoutes: FastifyPluginAsync = async (server) => {
+  server.get('/messages', adminRateLimit, async (request, reply) => {
     if (!requireAuth(request, reply)) return;
     const messages = await listMessages();
     return { messages };
   });
 
-  server.get('/messages/:id', async (request, reply) => {
+  server.get('/messages/:id', adminRateLimit, async (request, reply) => {
     if (!requireAuth(request, reply)) return;
-    const { id } = request.params as { id: string };
+    const { id } = (request.params as { id: string });
     try {
       return await getMessage(id);
     } catch {

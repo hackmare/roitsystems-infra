@@ -6,6 +6,8 @@ interface ContactEvent {
   timestamp: string;
 }
 
+const WEBHOOK_TIMEOUT_MS = 10_000;
+
 export async function handleContactMessage(event: ContactEvent): Promise<void> {
   const { message_id } = event;
 
@@ -17,15 +19,20 @@ export async function handleContactMessage(event: ContactEvent): Promise<void> {
   // NOTIFICATION_WEBHOOK_URL can point to a Signal/Telegram/email relay.
   const webhookUrl = process.env.NOTIFICATION_WEBHOOK_URL;
   if (webhookUrl) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
     try {
       await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message_id, event: 'contact.new' }),
+        signal: controller.signal,
       });
     } catch (e) {
       // Notification failure must not block message processing
       console.warn({ msg_id: message_id, warn: 'webhook delivery failed', error: String(e) });
+    } finally {
+      clearTimeout(timer);
     }
   }
   // ─────────────────────────────────────────────────────────────────────────

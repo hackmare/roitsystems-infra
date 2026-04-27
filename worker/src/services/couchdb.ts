@@ -8,16 +8,26 @@ const BASE_HEADERS = {
   'Content-Type': 'application/json',
 };
 
+const FETCH_TIMEOUT_MS = 10_000;
+
 async function couch(path: string, options: RequestInit = {}): Promise<unknown> {
-  const res = await fetch(`${COUCHDB_URL}${path}`, {
-    ...options,
-    headers: { ...BASE_HEADERS, ...(options.headers as Record<string, string> || {}) },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`CouchDB ${options.method || 'GET'} ${path}: ${res.status} ${text}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${COUCHDB_URL}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: { ...BASE_HEADERS, ...(options.headers as Record<string, string> || {}) },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.error(`CouchDB error: ${options.method || 'GET'} ${path} → ${res.status}`, text);
+      throw new Error(`Database error (${res.status})`);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json();
 }
 
 export async function setMessageStatus(

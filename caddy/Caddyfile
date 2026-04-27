@@ -3,18 +3,30 @@
 }
 
 {$API_DOMAIN} {
-  # Security headers
+  # Security headers applied to all responses from this domain.
   header {
+    # Prevent MIME-type sniffing
     X-Content-Type-Options nosniff
+    # Deny framing entirely (API only — no legitimate embed use case)
     X-Frame-Options DENY
-    X-XSS-Protection "1; mode=block"
+    # Strict HSTS: 2 years, include subdomains, preload-eligible
+    Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    # Tighten referrer leakage
     Referrer-Policy strict-origin-when-cross-origin
+    # Disable browser features that have no use on an API endpoint
+    Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=()"
+    # CSP for the admin HTML page; API JSON responses are unaffected.
+    # unsafe-inline is required because the admin SPA uses inline scripts and styles.
+    Content-Security-Policy "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self';"
+    # Remove identifying server headers
     -Server
     -X-Powered-By
+    # X-XSS-Protection intentionally omitted: deprecated in modern browsers,
+    # and can cause issues in some configurations. CSP provides better XSS protection.
   }
 
   # API and admin routes go to the Node service
-  @app path /api/* /admin* /health
+  @app path /api/* /admin /admin/* /health
   handle @app {
     reverse_proxy api:3000
   }

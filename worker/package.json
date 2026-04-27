@@ -5,7 +5,9 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "audit": "npm audit",
+    "test": "echo \"No automated tests defined\" && exit 0"
   },
   "dependencies": {
     "nats": "^2.28.2"

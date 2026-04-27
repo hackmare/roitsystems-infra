@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { contactRoutes } from './routes/contact';
-import { adminRoutes } from './routes/admin';
+import { adminRoutes, ADMIN_HTML } from './routes/admin';
 import { connectNats, closeNats } from './services/nats';
 import { ensureDatabases } from './services/couchdb';
 
@@ -33,6 +33,9 @@ async function bootstrap() {
   // Health check — not rate-limited, not CORS-gated
   server.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }));
 
+  // Admin SPA — served at /admin, auth handled client-side
+  server.get('/admin', async (_request, reply) => reply.type('text/html').send(ADMIN_HTML));
+
   // Admin SPA and API (rate-limited per IP for POST; no limit on GET admin UI)
   await server.register(adminRoutes, { prefix: '/api/admin' });
 
@@ -51,19 +54,24 @@ async function bootstrap() {
     { prefix: '/api' },
   );
 
-  // Initialise storage and messaging before accepting traffic
-  await ensureDatabases();
-  await connectNats();
-
+  // Start listening immediately so healthchecks pass while backing services init
   const port = parseInt(process.env.PORT || '3000');
   await server.listen({ port, host: '0.0.0.0' });
+
+  // Initialise backing services after the server is up
+  await ensureDatabases();
+  await connectNats();
 }
 
-process.on('SIGTERM', async () => {
+async function shutdown(signal: string) {
+  server.log.info(`${signal} received — shutting down`);
   await closeNats();
   await server.close();
   process.exit(0);
-});
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 bootstrap().catch((err) => {
   console.error(err);
