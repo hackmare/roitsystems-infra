@@ -65,7 +65,7 @@ Provide a JSON response with exactly these fields (be concise):
 
     const content = response.content[0].type === 'text' ? response.content[0].text : '{}';
     const jsonMatch = content.match(/\{[\s\S]*\}/);
-    return jsonMatch ? JSON.parse(jsonMatch[0]) : {
+    const analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : {
       painPoint: message.subject || 'Unable to analyze',
       companySize: message.company_size || 'unknown',
       timeline: 'unknown',
@@ -73,6 +73,14 @@ Provide a JSON response with exactly these fields (be concise):
       technicalNeeds: [],
       industry: 'unknown',
     };
+
+    log('info', 'Claude analysis completed', {
+      messageId: message._id,
+      analysis,
+      rawResponse: content.substring(0, 200),
+    });
+
+    return analysis;
   } catch (error) {
     log('warn', 'Failed to analyze message with Claude', { messageId: message._id, error: error.message });
     return {
