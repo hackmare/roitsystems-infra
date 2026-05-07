@@ -196,6 +196,12 @@ async function processMessage(message) {
   }
 
   // Filter: only process messages from roitsystems.ca
+  log('info', 'Processing message', {
+    messageId,
+    hasSourcePage: !!message.source_page,
+    sourcePageValue: message.source_page || '(undefined)',
+  });
+
   if (!message.source_page?.includes('roitsystems.ca')) {
     log('info', 'Ignoring message from non-roitsystems.ca source', {
       messageId,
