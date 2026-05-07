@@ -34,6 +34,8 @@ function log(level, message, data = {}) {
 // Analyze message with Claude Opus
 async function analyzeMessage(message) {
   try {
+    log('info', 'Starting Claude analysis', { messageId: message._id, subject: message.subject });
+
     const prompt = `You are analyzing a contact form submission. Extract key intelligence about the inquiry.
 
 Message:
