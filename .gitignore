@@ -22,3 +22,4 @@ Thumbs.db
 
 # Caddy data (generated at runtime)
 caddy/data/
+.secrets.local

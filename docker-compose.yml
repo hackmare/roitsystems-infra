@@ -105,6 +105,26 @@ services:
       nats:
         condition: service_healthy
 
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - NATS_URL=nats://nats:4222
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL:-m.oger@roitsystems.ca}
+      - NOTIFICATION_FROM_EMAIL=${NOTIFICATION_FROM_EMAIL:-notifications@roitsystems.ca}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_PHONE_FROM=${TWILIO_PHONE_FROM:-}
+    networks:
+      - backend
+    depends_on:
+      nats:
+        condition: service_healthy
+
 networks:
   proxy:
     driver: bridge

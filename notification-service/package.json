@@ -1,0 +1,19 @@
+{
+  "name": "notification-service",
+  "version": "1.0.0",
+  "description": "NATS-based notification service for contact messages",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "NODE_ENV=development node index.js"
+  },
+  "dependencies": {
+    "nats": "^2.20.0",
+    "resend": "^3.5.0",
+    "@anthropic-ai/sdk": "^0.24.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
