@@ -227,8 +227,9 @@ async function processMessage(natsEvent) {
   }
 
   // Filter: only process messages from roitsystems.ca
-  log('info', 'Processing message', {
+  log('info', 'Fetched message from CouchDB', {
     messageId,
+    messageKeys: Object.keys(message),
     hasSourcePage: !!message.source_page,
     sourcePageValue: message.source_page || '(undefined)',
   });
