@@ -162,15 +162,25 @@ async function sendEmailNotification(message, analysis) {
       html: htmlContent,
     });
 
+    if (response.error) {
+      log('error', 'Resend API error', {
+        messageId: message._id,
+        error: response.error,
+      });
+      return;
+    }
+
     log('info', 'Email notification sent', {
       messageId: message._id,
       recipient: NOTIFICATION_EMAIL,
       emailId: response.data?.id,
+      fromEmail: NOTIFICATION_FROM_EMAIL,
     });
   } catch (error) {
     log('error', 'Failed to send email notification', {
       messageId: message._id,
       error: error.message,
+      stack: error.stack,
     });
   }
 }
