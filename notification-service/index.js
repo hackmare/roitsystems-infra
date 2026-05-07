@@ -41,22 +41,35 @@ async function analyzeMessage(message) {
     console.error(`[CLAUDE] Starting analysis for message ${message._id}`);
     log('info', 'Starting Claude analysis', { messageId: message._id, subject: message.subject });
 
-    const prompt = `You are analyzing a contact form submission. Extract key intelligence about the inquiry.
+    const prompt = `You are an AI analyst for RO IT Systems, a consulting and IT advisory firm.
+Analyze this contact form submission to understand the prospect's needs and recommend relevant services.
+
+RO IT Systems specializes in:
+- Executive & Board Advisory (governance, strategy, oversight)
+- Risk & Compliance (regulatory, security, operational risk)
+- Digital Transformation (modernization, technology strategy)
+- Governance & Controls (frameworks, processes, maturity assessments)
+- IT Systems Integration (infrastructure, cloud, consolidation)
 
 Message:
 From: ${message.name || 'Unknown'} (${message.email})
-Subject: ${message.subject || 'No subject'}
+Contact Subject: ${message.subject || 'No subject'}
 Company Size: ${message.company_size || 'Not specified'}
 Message: ${message.message}
 
-Provide a JSON response with exactly these fields (be concise):
+Provide a JSON response with exactly these fields:
 {
-  "painPoint": "1-sentence summary of their problem or need",
-  "companySize": "estimated employee count or 'unknown'",
-  "timeline": "poc/urgent/soon/flexible/unknown",
-  "scope": "poc/small/medium/enterprise/unknown",
-  "technicalNeeds": ["array", "of", "technologies", "mentioned"],
-  "industry": "identified industry or 'unknown'"
+  "painPoint": "1-2 sentence summary of their core business problem",
+  "companyInference": {
+    "estimatedSize": "micro/small/medium/large/enterprise based on context clues",
+    "likelyIndustry": "inferred industry from language and context",
+    "organizationalMaturity": "startup/growth/established/enterprise assessment"
+  },
+  "recommendedServices": ["array", "of", "RO IT Systems services", "that match their need"],
+  "rationale": "2-3 sentences explaining why these services fit their situation",
+  "immediateOpportunity": "highest-value service to propose first",
+  "timeline": "urgent/soon/flexible/unknown",
+  "technicalContext": ["any", "technologies", "or", "platforms", "mentioned"]
 }`;
 
     log('info', 'Claude API: Initiating request', {
@@ -135,9 +148,12 @@ Provide a JSON response with exactly these fields (be concise):
 // Send email notification
 async function sendEmailNotification(message, analysis) {
   try {
-    const technicalNeeds = analysis.technicalNeeds?.length > 0
-      ? analysis.technicalNeeds.join(', ')
+    const technicalContext = analysis.technicalContext?.length > 0
+      ? analysis.technicalContext.join(', ')
       : 'Not specified';
+    const recommendedServices = analysis.recommendedServices?.length > 0
+      ? analysis.recommendedServices.join(', ')
+      : 'Not determined';
 
     const htmlContent = `
 <!DOCTYPE html>
@@ -145,12 +161,14 @@ async function sendEmailNotification(message, analysis) {
 <head>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .container { max-width: 700px; margin: 0 auto; padding: 20px; }
     .header { background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
     .section { margin-bottom: 20px; }
     .label { font-weight: 600; color: #555; }
-    .value { color: #333; }
-    .intelligence { background: #f9f9f9; padding: 15px; border-left: 3px solid #0066cc; border-radius: 3px; }
+    .value { color: #333; margin-top: 4px; }
+    .intelligence { background: #f0f7ff; padding: 15px; border-left: 4px solid #0066cc; border-radius: 3px; margin-bottom: 15px; }
+    .recommendation { background: #f0fff4; padding: 15px; border-left: 4px solid #00a86b; border-radius: 3px; }
+    .rec-title { font-weight: 600; color: #00a86b; margin-bottom: 8px; }
     .action-button { display: inline-block; background: #0066cc; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; margin-top: 15px; }
     code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
   </style>
@@ -182,13 +200,24 @@ async function sendEmailNotification(message, analysis) {
       <div class="value" style="white-space: pre-wrap; word-wrap: break-word;">${message.message}</div>
     </div>
 
-    <div class="section intelligence">
-      <h3>Extracted Intelligence</h3>
-      <div><span class="label">Pain Point:</span> ${analysis.painPoint}</div>
-      <div><span class="label">Timeline:</span> ${analysis.timeline}</div>
-      <div><span class="label">Scope:</span> ${analysis.scope}</div>
-      <div><span class="label">Industry:</span> ${analysis.industry}</div>
-      <div><span class="label">Technical Needs:</span> ${technicalNeeds}</div>
+    <div class="intelligence">
+      <h3 style="margin-top: 0;">Analysis</h3>
+      <div><span class="label">Core Need:</span> <div class="value">${analysis.painPoint}</div></div>
+      <div style="margin-top: 12px;"><span class="label">Company Profile:</span></div>
+      <div class="value" style="margin-left: 16px;">
+        • Size: ${analysis.companyInference?.estimatedSize || 'unknown'}<br/>
+        • Industry: ${analysis.companyInference?.likelyIndustry || 'unknown'}<br/>
+        • Maturity: ${analysis.companyInference?.organizationalMaturity || 'unknown'}
+      </div>
+      <div style="margin-top: 12px;"><span class="label">Technical Context:</span> <div class="value">${technicalContext}</div></div>
+      <div style="margin-top: 12px;"><span class="label">Timeline:</span> <div class="value">${analysis.timeline}</div></div>
+    </div>
+
+    <div class="recommendation">
+      <div class="rec-title">📊 Recommended Services</div>
+      <div style="margin-bottom: 12px;"><strong>${analysis.recommendedServices?.join(' • ')}</strong></div>
+      <div><span class="label">Why:</span> <div class="value">${analysis.rationale}</div></div>
+      <div style="margin-top: 12px;"><span class="label">Start With:</span> <div class="value"><strong>${analysis.immediateOpportunity}</strong></div></div>
     </div>
 
     <div class="section">
