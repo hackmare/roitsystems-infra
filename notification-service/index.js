@@ -41,36 +41,38 @@ async function analyzeMessage(message) {
     console.error(`[CLAUDE] Starting analysis for message ${message._id}`);
     log('info', 'Starting Claude analysis', { messageId: message._id, subject: message.subject });
 
-    const prompt = `You are an AI analyst for RO IT Systems, a consulting and IT advisory firm.
-Analyze this contact form submission to understand the prospect's needs and recommend relevant services.
+    const prompt = `You are an elite AI analyst for RO IT Systems. Your job is to deeply analyze this contact form and provide strategic recommendations.
 
-RO IT Systems specializes in:
-- Executive & Board Advisory (governance, strategy, oversight)
-- Risk & Compliance (regulatory, security, operational risk)
-- Digital Transformation (modernization, technology strategy)
-- Governance & Controls (frameworks, processes, maturity assessments)
-- IT Systems Integration (infrastructure, cloud, consolidation)
+RO IT Systems Core Services:
+• Executive & Board Advisory - C-suite guidance, governance, strategic planning
+• Risk & Compliance - regulatory, security, operational risk management
+• Digital Transformation - modernization, technology strategy, capability building
+• Governance & Controls - frameworks, processes, maturity assessment, oversight
+• IT Systems Integration - infrastructure consolidation, cloud strategy, platform modernization
 
-Message:
+CONTACT DETAILS:
 From: ${message.name || 'Unknown'} (${message.email})
-Contact Subject: ${message.subject || 'No subject'}
-Company Size: ${message.company_size || 'Not specified'}
+Subject Line: ${message.subject || 'No subject'}
+Company Size Provided: ${message.company_size || 'Not specified'}
 Message: ${message.message}
 
-Provide a JSON response with exactly these fields:
+CRITICAL: You must respond with ONLY valid JSON, no other text. Use this exact structure:
 {
-  "painPoint": "1-2 sentence summary of their core business problem",
+  "painPoint": "Clear 2-3 sentence statement of their core business challenge",
   "companyInference": {
-    "estimatedSize": "micro/small/medium/large/enterprise based on context clues",
-    "likelyIndustry": "inferred industry from language and context",
-    "organizationalMaturity": "startup/growth/established/enterprise assessment"
+    "estimatedSize": "Inferred employee count range or business stage (startup/growth/established/enterprise)",
+    "likelyIndustry": "Inferred industry sector based on language and context",
+    "organizationalMaturity": "Assessment of their organizational capability level",
+    "keyClues": "What signals in the message informed these inferences"
   },
-  "recommendedServices": ["array", "of", "RO IT Systems services", "that match their need"],
-  "rationale": "2-3 sentences explaining why these services fit their situation",
-  "immediateOpportunity": "highest-value service to propose first",
-  "timeline": "urgent/soon/flexible/unknown",
-  "technicalContext": ["any", "technologies", "or", "platforms", "mentioned"]
-}`;
+  "recommendedServices": ["Service 1", "Service 2", "Service 3"],
+  "rationale": "2-3 sentences: Why these specific services solve their stated problem",
+  "immediateOpportunity": "The single highest-value service to propose in the first conversation",
+  "timeline": "urgent/soon/flexible/unknown - when they likely need action",
+  "technicalContext": ["Any technology", "platform", "or tool", "they mentioned or clearly need"]
+}
+
+Return ONLY the JSON object. No explanation, no markdown, just valid JSON.`;
 
     log('info', 'Claude API: Initiating request', {
       messageId: message._id,
@@ -113,20 +115,58 @@ Provide a JSON response with exactly these fields:
     }
 
     const content = response.content[0].type === 'text' ? response.content[0].text : '{}';
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    const analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : {
-      painPoint: message.subject || 'Unable to analyze',
-      companySize: message.company_size || 'unknown',
-      timeline: 'unknown',
-      scope: 'unknown',
-      technicalNeeds: [],
-      industry: 'unknown',
-    };
+    let analysis;
+
+    try {
+      // Try to parse JSON directly first (Claude returned just JSON)
+      analysis = JSON.parse(content.trim());
+    } catch (parseError) {
+      // Fall back to regex extraction if needed
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          analysis = JSON.parse(jsonMatch[0]);
+        } catch (regexParseError) {
+          log('warn', 'Claude response parsing failed', {
+            messageId: message._id,
+            parseError: parseError.message,
+            regexParseError: regexParseError.message,
+            rawResponse: content.substring(0, 300),
+          });
+          analysis = null;
+        }
+      } else {
+        log('warn', 'No JSON found in Claude response', {
+          messageId: message._id,
+          rawResponse: content.substring(0, 300),
+        });
+        analysis = null;
+      }
+    }
+
+    // Validate analysis has required fields
+    if (!analysis || !analysis.painPoint) {
+      analysis = {
+        painPoint: message.subject || 'Unable to analyze',
+        companyInference: {
+          estimatedSize: message.company_size || 'unknown',
+          likelyIndustry: 'unknown',
+          organizationalMaturity: 'unknown',
+          keyClues: 'Insufficient context for inference',
+        },
+        recommendedServices: [],
+        rationale: 'Unable to analyze message content.',
+        immediateOpportunity: 'Needs discovery call',
+        timeline: 'unknown',
+        technicalContext: [],
+      };
+    }
 
     console.error(`[CLAUDE] Analysis completed: ${JSON.stringify(analysis)}`);
     log('info', 'Claude analysis completed', {
       messageId: message._id,
-      analysis,
+      hasCompanyInference: !!analysis.companyInference,
+      hasRecommendations: !!analysis.recommendedServices?.length,
       rawResponse: content.substring(0, 200),
     });
 
