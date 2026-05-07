@@ -59,6 +59,13 @@ Provide a JSON response with exactly these fields (be concise):
   "industry": "identified industry or 'unknown'"
 }`;
 
+    log('info', 'Claude API: Initiating request', {
+      messageId: message._id,
+      model: 'claude-opus-4-7',
+      maxTokens: 256,
+      promptLength: prompt.length,
+    });
+
     let response;
     try {
       response = await anthropic.messages.create({
@@ -71,12 +78,23 @@ Provide a JSON response with exactly these fields (be concise):
           },
         ],
       });
+
+      log('info', 'Claude API: Response received', {
+        messageId: message._id,
+        stopReason: response.stop_reason,
+        inputTokens: response.usage?.input_tokens,
+        outputTokens: response.usage?.output_tokens,
+        contentType: response.content[0]?.type,
+      });
     } catch (apiError) {
-      log('error', 'Claude API call failed', {
+      log('error', 'Claude API: Request failed', {
         messageId: message._id,
         error: apiError.message,
         status: apiError.status,
         type: apiError.type,
+        code: apiError.code,
+        errorName: apiError.constructor.name,
+        stack: apiError.stack,
       });
       throw apiError;
     }
@@ -183,31 +201,58 @@ async function sendEmailNotification(message, analysis) {
 </body>
 </html>`;
 
-    const response = await resend.emails.send({
+    log('info', 'Resend API: Initiating email send', {
+      messageId: message._id,
       from: NOTIFICATION_FROM_EMAIL,
       to: NOTIFICATION_EMAIL,
       subject: `New Contact: ${message.subject || message.name}`,
-      html: htmlContent,
+      htmlLength: htmlContent.length,
     });
 
+    let response;
+    try {
+      response = await resend.emails.send({
+        from: NOTIFICATION_FROM_EMAIL,
+        to: NOTIFICATION_EMAIL,
+        subject: `New Contact: ${message.subject || message.name}`,
+        html: htmlContent,
+      });
+      log('info', 'Resend API: Response received', {
+        messageId: message._id,
+        hasError: !!response.error,
+        hasData: !!response.data,
+      });
+    } catch (requestError) {
+      log('error', 'Resend API: Network error', {
+        messageId: message._id,
+        error: requestError.message,
+        errorType: requestError.constructor.name,
+        code: requestError.code,
+        stack: requestError.stack,
+      });
+      throw requestError;
+    }
+
     if (response.error) {
-      log('error', 'Resend API error', {
+      log('error', 'Resend API: Server returned error', {
         messageId: message._id,
         error: response.error,
+        errorType: typeof response.error,
       });
       return;
     }
 
-    log('info', 'Email notification sent', {
+    log('info', 'Email notification sent successfully', {
       messageId: message._id,
       recipient: NOTIFICATION_EMAIL,
       emailId: response.data?.id,
       fromEmail: NOTIFICATION_FROM_EMAIL,
     });
   } catch (error) {
-    log('error', 'Failed to send email notification', {
+    log('error', 'Email send: Unexpected error', {
       messageId: message._id,
       error: error.message,
+      errorType: error.constructor.name,
       stack: error.stack,
     });
   }
@@ -225,24 +270,50 @@ async function sendSmsNotification(message, analysis) {
 
 // Fetch message from CouchDB
 async function fetchMessage(messageId) {
-  try {
-    const couchdbUrl = process.env.COUCHDB_URL || 'http://couchdb:5984';
-    const user = process.env.COUCHDB_USER || 'admin';
-    const password = process.env.COUCHDB_PASSWORD || '';
-    const auth = Buffer.from(`${user}:${password}`).toString('base64');
+  const couchdbUrl = process.env.COUCHDB_URL || 'http://couchdb:5984';
+  const user = process.env.COUCHDB_USER || 'admin';
+  const password = process.env.COUCHDB_PASSWORD || '';
+  const auth = Buffer.from(`${user}:${password}`).toString('base64');
+  const url = `${couchdbUrl}/contact_messages/${messageId}`;
 
-    const response = await fetch(`${couchdbUrl}/contact_messages/${messageId}`, {
+  try {
+    log('info', 'CouchDB: Initiating fetch', { messageId, url });
+
+    const response = await fetch(url, {
       headers: { Authorization: `Basic ${auth}` },
     });
 
+    log('info', 'CouchDB: Response received', {
+      messageId,
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get('content-type'),
+    });
+
     if (!response.ok) {
-      log('warn', 'Failed to fetch message from CouchDB', { messageId, status: response.status });
+      log('error', 'CouchDB: HTTP error response', {
+        messageId,
+        status: response.status,
+        statusText: response.statusText,
+        body: await response.text().catch(() => '(unable to read body)'),
+      });
       return null;
     }
 
-    return await response.json();
+    const data = await response.json();
+    log('info', 'CouchDB: Successfully parsed response', {
+      messageId,
+      fields: Object.keys(data),
+    });
+    return data;
   } catch (error) {
-    log('error', 'Error fetching message from CouchDB', { messageId, error: error.message });
+    log('error', 'CouchDB: Network or parsing error', {
+      messageId,
+      error: error.message,
+      errorType: error.constructor.name,
+      code: error.code,
+      stack: error.stack,
+    });
     return null;
   }
 }
