@@ -41,7 +41,7 @@ async function analyzeMessage(message) {
     console.error(`[CLAUDE] Starting analysis for message ${message._id}`);
     log('info', 'Starting Claude analysis', { messageId: message._id, subject: message.subject });
 
-    const prompt = `You are an elite AI analyst for RO IT Systems. Your job is to deeply analyze this contact form and provide strategic recommendations.
+    const prompt = `You are an elite AI research analyst for RO IT Systems. Your job is to deeply research and analyze this contact form, providing strategic recommendations backed by industry knowledge.
 
 RO IT Systems Core Services:
 • Executive & Board Advisory - C-suite guidance, governance, strategic planning
@@ -56,20 +56,31 @@ Subject Line: ${message.subject || 'No subject'}
 Company Size Provided: ${message.company_size || 'Not specified'}
 Message: ${message.message}
 
+RESEARCH INSTRUCTIONS:
+1. Use your knowledge of the company mentioned (if identifiable) - their market position, business model, recent challenges
+2. Research the industry sector - what are current challenges, regulations, transformation trends?
+3. Infer their technology stack and operational maturity based on language/context clues
+4. Cross-reference with RO IT Systems' expertise areas - where is the biggest ROI?
+5. Provide competitive/market context - what are peers doing? What's the industry benchmark?
+
 CRITICAL: You must respond with ONLY valid JSON, no other text. Use this exact structure:
 {
   "painPoint": "Clear 2-3 sentence statement of their core business challenge",
-  "companyInference": {
-    "estimatedSize": "Inferred employee count range or business stage (startup/growth/established/enterprise)",
-    "likelyIndustry": "Inferred industry sector based on language and context",
-    "organizationalMaturity": "Assessment of their organizational capability level",
-    "keyClues": "What signals in the message informed these inferences"
+  "companyResearch": {
+    "name": "Company name if identifiable",
+    "estimatedSize": "Inferred employee count range or business stage",
+    "likelyIndustry": "Inferred industry sector",
+    "organizationalMaturity": "Assessment based on language/approach/signals",
+    "industryContext": "Current trends, challenges, or regulations in their sector",
+    "keyClues": "Signals from the message that informed inferences"
   },
+  "competitiveAnalysis": "Brief insight into what competitors/peers are doing in this space",
   "recommendedServices": ["Service 1", "Service 2", "Service 3"],
-  "rationale": "2-3 sentences: Why these specific services solve their stated problem",
-  "immediateOpportunity": "The single highest-value service to propose in the first conversation",
-  "timeline": "urgent/soon/flexible/unknown - when they likely need action",
-  "technicalContext": ["Any technology", "platform", "or tool", "they mentioned or clearly need"]
+  "rationale": "3-4 sentences explaining why these services solve their specific problem given their company context and industry trends",
+  "immediateOpportunity": "The single highest-value service to propose first with specific context",
+  "timeline": "urgent/soon/flexible/unknown",
+  "technicalContext": ["Technologies", "platforms", "or frameworks", "they need or mentioned"],
+  "marketInsight": "1-2 sentences on market dynamics that make this engagement timely"
 }
 
 Return ONLY the JSON object. No explanation, no markdown, just valid JSON.`;
@@ -241,15 +252,24 @@ async function sendEmailNotification(message, analysis) {
     </div>
 
     <div class="intelligence">
-      <h3 style="margin-top: 0;">Analysis</h3>
+      <h3 style="margin-top: 0;">AI Research Analysis</h3>
       <div><span class="label">Core Need:</span> <div class="value">${analysis.painPoint}</div></div>
-      <div style="margin-top: 12px;"><span class="label">Company Profile:</span></div>
-      <div class="value" style="margin-left: 16px;">
-        • Size: ${analysis.companyInference?.estimatedSize || 'unknown'}<br/>
-        • Industry: ${analysis.companyInference?.likelyIndustry || 'unknown'}<br/>
-        • Maturity: ${analysis.companyInference?.organizationalMaturity || 'unknown'}
+
+      <div style="margin-top: 16px;"><span class="label">Company Research:</span></div>
+      <div class="value" style="margin-left: 16px; margin-top: 8px;">
+        ${analysis.companyResearch?.name ? `• Name: ${analysis.companyResearch.name}<br/>` : ''}
+        • Size: ${analysis.companyResearch?.estimatedSize || 'unknown'}<br/>
+        • Industry: ${analysis.companyResearch?.likelyIndustry || 'unknown'}<br/>
+        • Maturity: ${analysis.companyResearch?.organizationalMaturity || 'unknown'}<br/>
+        ${analysis.companyResearch?.industryContext ? `• Industry Context: ${analysis.companyResearch.industryContext}<br/>` : ''}
       </div>
+
+      ${analysis.competitiveAnalysis ? `<div style="margin-top: 12px;"><span class="label">Market Context:</span> <div class="value">${analysis.competitiveAnalysis}</div></div>` : ''}
+
       <div style="margin-top: 12px;"><span class="label">Technical Context:</span> <div class="value">${technicalContext}</div></div>
+
+      ${analysis.marketInsight ? `<div style="margin-top: 12px;"><span class="label">Market Timing:</span> <div class="value">${analysis.marketInsight}</div></div>` : ''}
+
       <div style="margin-top: 12px;"><span class="label">Timeline:</span> <div class="value">${analysis.timeline}</div></div>
     </div>
 
