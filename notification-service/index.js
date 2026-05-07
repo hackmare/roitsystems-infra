@@ -22,18 +22,23 @@ const processedMessages = new Set();
 function log(level, message, data = {}) {
   if (['info', 'warn', 'error'].includes(LOG_LEVEL) || level === 'error') {
     const timestamp = new Date().toISOString();
-    console.log(JSON.stringify({
+    const logEntry = JSON.stringify({
       timestamp,
       level,
       message,
       ...data,
-    }));
+    });
+    console.log(logEntry);
+    if (level === 'error' || level === 'warn') {
+      console.error(logEntry);
+    }
   }
 }
 
 // Analyze message with Claude Opus
 async function analyzeMessage(message) {
   try {
+    console.error(`[CLAUDE] Starting analysis for message ${message._id}`);
     log('info', 'Starting Claude analysis', { messageId: message._id, subject: message.subject });
 
     const prompt = `You are analyzing a contact form submission. Extract key intelligence about the inquiry.
@@ -87,6 +92,7 @@ Provide a JSON response with exactly these fields (be concise):
       industry: 'unknown',
     };
 
+    console.error(`[CLAUDE] Analysis completed: ${JSON.stringify(analysis)}`);
     log('info', 'Claude analysis completed', {
       messageId: message._id,
       analysis,
@@ -95,6 +101,7 @@ Provide a JSON response with exactly these fields (be concise):
 
     return analysis;
   } catch (error) {
+    console.error(`[CLAUDE] ERROR: ${error.message}\n${error.stack}`);
     log('warn', 'Failed to analyze message with Claude', { messageId: message._id, error: error.message });
     return {
       painPoint: message.subject || 'Unable to analyze',
