@@ -185,13 +185,44 @@ async function sendSmsNotification(message, analysis) {
   log('info', 'SMS notification (not yet implemented)', { messageId: message._id });
 }
 
+// Fetch message from CouchDB
+async function fetchMessage(messageId) {
+  try {
+    const couchdbUrl = process.env.COUCHDB_URL || 'http://couchdb:5984';
+    const user = process.env.COUCHDB_USER || 'admin';
+    const password = process.env.COUCHDB_PASSWORD || '';
+    const auth = Buffer.from(`${user}:${password}`).toString('base64');
+
+    const response = await fetch(`${couchdbUrl}/contact_messages/${messageId}`, {
+      headers: { Authorization: `Basic ${auth}` },
+    });
+
+    if (!response.ok) {
+      log('warn', 'Failed to fetch message from CouchDB', { messageId, status: response.status });
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    log('error', 'Error fetching message from CouchDB', { messageId, error: error.message });
+    return null;
+  }
+}
+
 // Process incoming message
-async function processMessage(message) {
-  const messageId = message._id || `${Date.now()}-${Math.random()}`;
+async function processMessage(natsEvent) {
+  const messageId = natsEvent.message_id;
 
   // Skip if already processed
   if (processedMessages.has(messageId)) {
     log('info', 'Skipping duplicate message', { messageId });
+    return;
+  }
+
+  // Fetch full message from CouchDB
+  const message = await fetchMessage(messageId);
+  if (!message) {
+    log('warn', 'Could not retrieve message for processing', { messageId });
     return;
   }
 
@@ -241,6 +272,7 @@ async function main() {
   log('info', 'Starting notification service', {
     natsUrl: NATS_URL,
     notificationEmail: NOTIFICATION_EMAIL,
+    couchdbUrl: process.env.COUCHDB_URL || 'http://couchdb:5984',
   });
 
   try {
@@ -260,10 +292,10 @@ async function main() {
     (async () => {
       for await (const msg of sub) {
         try {
-          const data = JSON.parse(new TextDecoder().decode(msg.data));
-          await processMessage(data);
+          const natsEvent = JSON.parse(new TextDecoder().decode(msg.data));
+          await processMessage(natsEvent);
         } catch (error) {
-          log('error', 'Failed to parse message', { error: error.message });
+          log('error', 'Failed to parse NATS message', { error: error.message });
         }
       }
     })();
