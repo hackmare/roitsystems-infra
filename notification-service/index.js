@@ -54,16 +54,27 @@ Provide a JSON response with exactly these fields (be concise):
   "industry": "identified industry or 'unknown'"
 }`;
 
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-1-20250805',
-      max_tokens: 256,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    });
+    let response;
+    try {
+      response = await anthropic.messages.create({
+        model: 'claude-opus-4-7',
+        max_tokens: 256,
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+      });
+    } catch (apiError) {
+      log('error', 'Claude API call failed', {
+        messageId: message._id,
+        error: apiError.message,
+        status: apiError.status,
+        type: apiError.type,
+      });
+      throw apiError;
+    }
 
     const content = response.content[0].type === 'text' ? response.content[0].text : '{}';
     const jsonMatch = content.match(/\{[\s\S]*\}/);
