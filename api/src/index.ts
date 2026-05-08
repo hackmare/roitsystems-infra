@@ -3,8 +3,12 @@ import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { contactRoutes } from './routes/contact';
 import { adminRoutes, ADMIN_HTML } from './routes/admin';
+import { imageJobsRoutes } from './routes/image-jobs';
 import { connectNats, closeNats } from './services/nats';
 import { ensureDatabases } from './services/couchdb';
+import { initImageJobs } from './services/image-jobs';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 const server = Fastify({
   logger: {
@@ -36,8 +40,25 @@ async function bootstrap() {
   // Admin SPA — served at /admin, auth handled client-side
   server.get('/admin', async (_request, reply) => reply.type('text/html').send(ADMIN_HTML));
 
+  // Image converter admin page
+  let imageConverterHtml = '';
+  try {
+    imageConverterHtml = readFileSync(resolve(__dirname, 'admin-image-convert.html'), 'utf-8');
+  } catch (err) {
+    server.log.warn('admin-image-convert.html not found');
+  }
+  server.get('/admin/image-convert', async (_request, reply) => {
+    if (!imageConverterHtml) {
+      return reply.status(404).send({ error: 'Not found' });
+    }
+    return reply.type('text/html').send(imageConverterHtml);
+  });
+
   // Admin SPA and API (rate-limited per IP for POST; no limit on GET admin UI)
   await server.register(adminRoutes, { prefix: '/api/admin' });
+
+  // Image jobs API (rate-limited)
+  await server.register(imageJobsRoutes, { prefix: '/api' });
 
   // Public contact form endpoint — rate-limited
   await server.register(
@@ -60,6 +81,7 @@ async function bootstrap() {
 
   // Initialise backing services after the server is up
   await ensureDatabases();
+  initImageJobs();
   await connectNats();
 }
 

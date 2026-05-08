@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>RO IT Systems — Image Converter</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f8fafc; color: #0f172a; min-height: 100vh; }
+  .header { background: #0f172a; color: white; padding: 1rem 1.5rem; display: flex; align-items: center; gap: 1rem; }
+  .header h1 { font-size: 1rem; font-weight: 600; }
+  .header .logout { margin-left: auto; background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white; padding: 0.375rem 0.75rem; border-radius: 999px; cursor: pointer; font-size: 0.8rem; }
+  .header .logout:hover { border-color: rgba(255,255,255,0.6); }
+  #login { max-width: 360px; margin: 4rem auto; background: white; padding: 2rem; border-radius: 1rem; border: 1px solid #e2e8f0; box-shadow: 0 4px 24px rgba(15,23,42,0.07); }
+  #login h2 { font-size: 1.25rem; margin-bottom: 1.25rem; }
+  #login input { width: 100%; padding: 0.75rem 1rem; border: 1px solid #e2e8f0; border-radius: 0.75rem; font-size: 0.95rem; margin-bottom: 0.75rem; }
+  #login button { width: 100%; background: #1d4ed8; color: white; border: none; padding: 0.75rem; border-radius: 999px; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+  #login button:hover { background: #1e40af; }
+  #login .error { color: #dc2626; font-size: 0.85rem; margin-top: 0.5rem; }
+  #main { display: none; }
+  .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+  .page-content { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  @media (max-width: 900px) { .page-content { grid-template-columns: 1fr; } }
+  .panel { background: white; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 1.5rem; }
+  .section-title { font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-top: 1rem; margin-bottom: 0.75rem; }
+  .section-title:first-child { margin-top: 0; }
+  .form-group { margin-bottom: 1rem; }
+  .form-label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; font-weight: 500; margin-bottom: 0.35rem; }
+  .info-btn { background: none; border: none; color: #64748b; cursor: help; font-size: 0.8rem; padding: 0; width: 1.2em; height: 1.2em; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+  .info-btn:hover { color: #1d4ed8; background: #eff6ff; }
+  .tooltip-container { position: relative; display: inline-block; }
+  .tooltip { display: none; position: absolute; bottom: 125%; left: -80px; width: 200px; background: #0f172a; color: white; padding: 0.75rem; border-radius: 0.5rem; font-size: 0.8rem; line-height: 1.4; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+  .tooltip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border-width: 6px 6px 0 6px; border-style: solid; border-color: #0f172a transparent transparent transparent; }
+  .info-btn:hover .tooltip { display: block; }
+  input[type="text"], input[type="number"], input[type="color"], select { width: 100%; padding: 0.75rem 1rem; border: 1px solid #e2e8f0; border-radius: 0.75rem; font-size: 0.95rem; }
+  input[type="text"]:focus, input[type="number"]:focus, input[type="color"]:focus, select:focus { outline: none; border-color: #1d4ed8; box-shadow: 0 0 0 3px #eff6ff; }
+  input[type="range"] { width: 100%; }
+  .checkbox-group { display: flex; align-items: center; gap: 0.5rem; }
+  input[type="checkbox"] { width: 1.1rem; height: 1.1rem; cursor: pointer; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .submit-btn { width: 100%; background: #1d4ed8; color: white; border: none; padding: 0.875rem 1.5rem; border-radius: 999px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 1rem; }
+  .submit-btn:hover { background: #1e40af; }
+  .submit-btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+  .upload-zone { border: 2px dashed #cbd5e1; border-radius: 0.75rem; padding: 2rem; text-align: center; cursor: pointer; transition: border-color 0.2s, background-color 0.2s; }
+  .upload-zone:hover { border-color: #1d4ed8; background-color: #f0f9ff; }
+  .upload-zone.dragover { border-color: #1d4ed8; background-color: #eff6ff; }
+  .upload-zone input[type="file"] { display: none; }
+  .upload-zone-text { color: #64748b; font-size: 0.9rem; }
+  .preview-container { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.75rem; padding: 1rem; text-align: center; min-height: 200px; display: flex; align-items: center; justify-content: center; }
+  .preview-image { max-width: 100%; max-height: 300px; border-radius: 0.5rem; }
+  .status-badge { display: inline-block; padding: 0.375rem 0.75rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600; margin-bottom: 1rem; }
+  .status-idle { background: #f1f5f9; color: #475569; }
+  .status-queued { background: #fef9c3; color: #854d0e; }
+  .status-processing { background: #fef9c3; color: #854d0e; }
+  .status-done { background: #dcfce7; color: #166534; }
+  .status-error { background: #fee2e2; color: #991b1b; }
+  .download-btn { display: inline-block; background: #16a34a; color: white; padding: 0.75rem 1.5rem; border-radius: 999px; text-decoration: none; font-weight: 600; margin-top: 0.75rem; cursor: pointer; border: none; }
+  .download-btn:hover { background: #15803d; }
+  .recent-jobs { margin-top: 1.5rem; }
+  .job-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.75rem; padding: 0.75rem 1rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
+  .job-id { font-family: monospace; color: #64748b; }
+  .job-status { margin-left: auto; }
+  .error-message { background: #fee2e2; border: 1px solid #fecaca; color: #991b1b; padding: 0.75rem 1rem; border-radius: 0.75rem; font-size: 0.9rem; margin-bottom: 1rem; }
+  .poll-settings { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.75rem; padding: 0.75rem 1rem; margin-bottom: 1rem; }
+  .poll-settings label { font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem; }
+  .poll-settings input { width: 60px; padding: 0.35rem 0.5rem; }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <h2>Admin Access</h2>
+  <input type="password" id="tokenInput" placeholder="Enter admin token">
+  <button onclick="authenticate()">Sign in</button>
+  <div class="error" id="loginError"></div>
+</div>
+
+<div id="main">
+  <div class="header">
+    <h1>🔵 RO IT Systems Admin · Image Converter</h1>
+    <button class="logout" onclick="logout()">Logout</button>
+  </div>
+
+  <div class="container">
+    <div class="page-content">
+      <!-- LEFT PANEL: SETTINGS -->
+      <div class="panel">
+        <div class="section-title">Upload</div>
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="fileInput" onchange="handleFileSelect(event)">
+          <div class="upload-zone-text">📁 Drop file here or click to browse</div>
+        </div>
+
+        <div class="section-title">Output</div>
+        <div class="form-group">
+          <label class="form-label">
+            Format
+            <button class="info-btn tooltip-container">
+              ⓘ
+              <div class="tooltip">Output file format. PNG is lossless. JPG is smaller for photos. WebP is modern and compact for web.</div>
+            </button>
+          </label>
+          <select id="format_out">
+            <option value="png">PNG</option>
+            <option value="jpg">JPG</option>
+            <option value="webp">WebP</option>
+            <option value="gif">GIF</option>
+            <option value="tiff">TIFF</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">
+            Quality (1–100)
+            <button class="info-btn tooltip-container">
+              ⓘ
+              <div class="tooltip">Compression quality (1–100). 85 is the web standard. Lower = smaller file with more artifacts. Only applies to JPG, WebP.</div>
+            </button>
+          </label>
+          <input type="range" id="quality" min="1" max="100" value="85">
+          <span style="font-size: 0.85rem; color: #64748b;"><span id="qualityValue">85</span>/100</span>
+        </div>
+
+        <div class="section-title">Transform</div>
+        <div class="row">
+          <div class="form-group">
+            <label class="form-label">
+              Width (px)
+              <button class="info-btn tooltip-container">
+                ⓘ
+                <div class="tooltip">Target width in pixels. Leave blank to keep original. Lock aspect ratio to avoid distortion.</div>
+              </button>
+            </label>
+            <input type="number" id="width" min="1" placeholder="Original">
+          </div>
+          <div class="form-group">
+            <label class="form-label">
+              Height (px)
+              <button class="info-btn tooltip-container">
+                ⓘ
+                <div class="tooltip">Target height in pixels. Leave blank to keep original.</div>
+              </button>
+            </label>
+            <input type="number" id="height" min="1" placeholder="Original">
+          </div>
+        </div>
+
+        <div class="checkbox-group" style="margin-bottom: 1rem;">
+          <input type="checkbox" id="lockAspectRatio" checked>
+          <label for="lockAspectRatio" style="margin: 0;">Lock aspect ratio</label>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">
+            Rotate (°)
+            <button class="info-btn tooltip-container">
+              ⓘ
+              <div class="tooltip">Rotate clockwise by degrees. 90, 180, 270 for standard rotations.</div>
+            </button>
+          </label>
+          <input type="number" id="rotate" min="0" max="359" value="0">
+        </div>
+
+        <div class="checkbox-group" style="margin-bottom: 1rem;">
+          <input type="checkbox" id="trim">
+          <label for="trim" style="margin: 0;">
+            Trim whitespace
+            <button class="info-btn tooltip-container" style="margin-left: 0.25rem;">
+              ⓘ
+              <div class="tooltip">Removes uniform border colour (usually white or transparent) from all edges. Useful for logos and icons.</div>
+            </button>
+          </label>
+        </div>
+
+        <div class="section-title">Color</div>
+        <div class="form-group">
+          <label class="form-label">
+            Colorspace
+            <button class="info-btn tooltip-container">
+              ⓘ
+              <div class="tooltip">Colour model. sRGB for screen and web. CMYK for print. Gray for black-and-white output.</div>
+            </button>
+          </label>
+          <select id="colorspace">
+            <option value="sRGB">sRGB (Web)</option>
+            <option value="CMYK">CMYK (Print)</option>
+            <option value="Gray">Grayscale</option>
+            <option value="RGB">RGB</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">
+            Background Color
+            <button class="info-btn tooltip-container">
+              ⓘ
+              <div class="tooltip">Fill colour for transparent areas when flattening. Useful when converting PNG to JPG.</div>
+            </button>
+          </label>
+          <input type="color" id="background" value="#ffffff">
+        </div>
+
+        <div class="checkbox-group" style="margin-bottom: 1rem;">
+          <input type="checkbox" id="flatten">
+          <label for="flatten" style="margin: 0;">
+            Flatten layers
+            <button class="info-btn tooltip-container" style="margin-left: 0.25rem;">
+              ⓘ
+              <div class="tooltip">Merges all layers into one and removes transparency. Required when saving to formats that don't support alpha (JPG, BMP).</div>
+            </button>
+          </label>
+        </div>
+
+        <div class="section-title">Effects</div>
+        <div class="form-group">
+          <label class="form-label">
+            Density (DPI)
+            <button class="info-btn tooltip-container">
+              ⓘ
+              <div class="tooltip">DPI resolution metadata. 72 for screen. 150–300 for print. Does not resize the image — affects how it prints.</div>
+            </button>
+          </label>
+          <input type="number" id="density" min="1" max="600" value="72">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">
+            Blur
+            <button class="info-btn tooltip-container">
+              ⓘ
+              <div class="tooltip">Gaussian blur radius (0 = off). Use 0.5–2.0 for subtle softening.</div>
+            </button>
+          </label>
+          <input type="number" id="blur" min="0" max="10" step="0.1" value="0">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">
+            Sharpen
+            <button class="info-btn tooltip-container">
+              ⓘ
+              <div class="tooltip">Unsharp mask strength (0 = off). Use 0.5–1.0 to recover detail after resizing.</div>
+            </button>
+          </label>
+          <input type="number" id="sharpen" min="0" max="10" step="0.1" value="0">
+        </div>
+
+        <button class="submit-btn" id="submitBtn" onclick="submitJob()">Submit Job</button>
+      </div>
+
+      <!-- RIGHT PANEL: STATUS & RESULT -->
+      <div class="panel">
+        <div class="section-title">Preview</div>
+        <div class="preview-container" id="previewContainer">
+          <div style="color: #94a3b8; font-size: 0.9rem;">Upload an image to preview</div>
+        </div>
+
+        <div class="section-title" style="margin-top: 1.5rem;">Job Status</div>
+        <div id="errorMessage"></div>
+        <div class="status-badge status-idle" id="statusBadge">Idle</div>
+        <div id="statusInfo" style="font-size: 0.9rem; color: #64748b; line-height: 1.5;"></div>
+
+        <div id="resultContainer" style="display: none; margin-top: 1rem;">
+          <button class="download-btn" id="downloadBtn" onclick="downloadResult()">⬇ Download Result</button>
+        </div>
+
+        <div class="poll-settings">
+          <label>
+            Poll interval:
+            <input type="number" id="pollInterval" min="1" max="60" value="15"> seconds
+          </label>
+        </div>
+
+        <div class="recent-jobs">
+          <div class="section-title">Recent Jobs</div>
+          <div id="jobsList" style="font-size: 0.85rem;">None yet</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let authToken = null;
+  let selectedFile = null;
+  let currentJob = null;
+  let pollTimeout = null;
+  let recentJobs = [];
+
+  // Quality slider update
+  document.getElementById('quality').addEventListener('input', (e) => {
+    document.getElementById('qualityValue').textContent = e.target.value;
+  });
+
+  // Upload zone drag & drop
+  const uploadZone = document.getElementById('uploadZone');
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    uploadZone.addEventListener(eventName, preventDefaults, false);
+  });
+
+  function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  uploadZone.addEventListener('dragover', () => uploadZone.classList.add('dragover'));
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+  uploadZone.addEventListener('drop', (e) => {
+    uploadZone.classList.remove('dragover');
+    const files = e.dataTransfer.files;
+    if (files.length) handleFileSelect({ target: { files } });
+  });
+
+  uploadZone.addEventListener('click', () => document.getElementById('fileInput').click());
+
+  function handleFileSelect(event) {
+    const files = event.target.files || event.dataTransfer?.files;
+    if (!files?.length) return;
+
+    selectedFile = files[0];
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const preview = document.getElementById('previewContainer');
+      if (selectedFile.type.startsWith('image/')) {
+        preview.innerHTML = `<img src="${e.target.result}" class="preview-image">`;
+      } else {
+        preview.innerHTML = `<div style="color: #64748b;">📄 ${selectedFile.name}</div>`;
+      }
+    };
+    reader.readAsDataURL(selectedFile);
+  }
+
+  function authenticate() {
+    const token = document.getElementById('tokenInput').value;
+    if (!token) {
+      document.getElementById('loginError').textContent = 'Enter a token';
+      return;
+    }
+    authToken = token;
+    sessionStorage.setItem('admin_token', token);
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('main').style.display = 'block';
+  }
+
+  function logout() {
+    authToken = null;
+    sessionStorage.removeItem('admin_token');
+    document.getElementById('login').style.display = 'block';
+    document.getElementById('main').style.display = 'none';
+    document.getElementById('tokenInput').value = '';
+    clearPoll();
+  }
+
+  function setStatus(status, transactionId = '') {
+    const badge = document.getElementById('statusBadge');
+    const info = document.getElementById('statusInfo');
+    badge.className = `status-badge status-${status}`;
+    if (status === 'idle') badge.textContent = 'Idle';
+    else if (status === 'queued') badge.textContent = '⏳ Queued…';
+    else if (status === 'processing') badge.textContent = '⏳ Processing…';
+    else if (status === 'done') badge.textContent = '✓ Done';
+    else if (status === 'error') badge.textContent = '✗ Error';
+    if (transactionId) info.textContent = `Transaction: ${transactionId.slice(0, 12)}…`;
+    else info.textContent = '';
+  }
+
+  async function submitJob() {
+    const errorEl = document.getElementById('errorMessage');
+    errorEl.innerHTML = '';
+
+    if (!selectedFile) {
+      errorEl.innerHTML = '<div class="error-message">Select a file first</div>';
+      return;
+    }
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64 = e.target.result.split(',')[1];
+        const ext = selectedFile.name.split('.').pop() || 'bin';
+
+        const payload = {
+          filename: selectedFile.name,
+          format_in: ext,
+          format_out: document.getElementById('format_out').value,
+          quality: parseInt(document.getElementById('quality').value),
+          width: parseInt(document.getElementById('width').value) || undefined,
+          height: parseInt(document.getElementById('height').value) || undefined,
+          lockAspectRatio: document.getElementById('lockAspectRatio').checked,
+          rotate: parseInt(document.getElementById('rotate').value),
+          trim: document.getElementById('trim').checked,
+          colorspace: document.getElementById('colorspace').value,
+          background: document.getElementById('background').value,
+          flatten: document.getElementById('flatten').checked,
+          density: parseInt(document.getElementById('density').value),
+          blur: parseFloat(document.getElementById('blur').value),
+          sharpen: parseFloat(document.getElementById('sharpen').value),
+        };
+
+        const response = await fetch('/api/admin/image-jobs', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) logout();
+          throw new Error('Failed to submit job');
+        }
+
+        const result = await response.json();
+        currentJob = result.transaction_id;
+        addToRecentJobs(result.transaction_id, selectedFile.name, 'queued');
+        setStatus('processing', result.transaction_id);
+        document.getElementById('resultContainer').style.display = 'none';
+        clearPoll();
+        pollStatus();
+      };
+      reader.readAsDataURL(selectedFile);
+    } catch (err) {
+      errorEl.innerHTML = `<div class="error-message">${err.message}</div>`;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function clearPoll() {
+    if (pollTimeout) clearTimeout(pollTimeout);
+  }
+
+  function pollStatus() {
+    if (!currentJob) return;
+
+    const pollInterval = parseInt(document.getElementById('pollInterval').value) * 1000;
+
+    clearPoll();
+    pollTimeout = setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/admin/image-jobs/${currentJob}`, {
+          headers: { 'Authorization': `Bearer ${authToken}` },
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) logout();
+          throw new Error('Failed to fetch job status');
+        }
+
+        const job = await response.json();
+        setStatus(job.status, currentJob);
+
+        if (job.status === 'done') {
+          document.getElementById('resultContainer').style.display = 'block';
+          const preview = document.getElementById('previewContainer');
+          const img = new Image();
+          img.onload = () => preview.innerHTML = `<img src="${img.src}" class="preview-image">`;
+          img.src = `data:image/${document.getElementById('format_out').value};base64,${job.data}`;
+        } else if (job.status === 'error') {
+          const errorEl = document.getElementById('errorMessage');
+          errorEl.innerHTML = `<div class="error-message">Error: ${job.error || 'Unknown error'}</div>`;
+          setStatus('error', currentJob);
+        } else {
+          pollStatus();
+        }
+      } catch (err) {
+        const errorEl = document.getElementById('errorMessage');
+        errorEl.innerHTML = `<div class="error-message">Poll error: ${err.message}</div>`;
+      }
+    }, pollInterval);
+  }
+
+  function downloadResult() {
+    if (!currentJob) return;
+    const ext = document.getElementById('format_out').value;
+    const filename = (selectedFile?.name || 'image').replace(/\.[^/.]+$/, '') + '.' + ext;
+    const link = document.createElement('a');
+    link.href = `data:image/${ext};base64,${document.getElementById('previewContainer').querySelector('img').src.split(',')[1]}`;
+    link.download = filename;
+    link.click();
+  }
+
+  function addToRecentJobs(transactionId, filename, status) {
+    recentJobs.unshift({ transactionId, filename, status });
+    recentJobs = recentJobs.slice(0, 10);
+    updateJobsList();
+  }
+
+  function updateJobsList() {
+    const list = document.getElementById('jobsList');
+    if (!recentJobs.length) {
+      list.innerHTML = 'None yet';
+      return;
+    }
+    list.innerHTML = recentJobs.map(job => {
+      const statusIcon = job.status === 'done' ? '✓' : job.status === 'error' ? '✗' : '⏳';
+      return `<div class="job-item">
+        <span class="job-id">${job.transactionId.slice(0, 12)}…</span>
+        <span>${job.filename}</span>
+        <span class="job-status">${statusIcon}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // On page load
+  window.addEventListener('load', () => {
+    const token = sessionStorage.getItem('admin_token');
+    if (token) {
+      authToken = token;
+      document.getElementById('login').style.display = 'none';
+      document.getElementById('main').style.display = 'block';
+    }
+  });
+</script>
+</body>
+</html>

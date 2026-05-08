@@ -35,7 +35,7 @@ async function couch(path: string, options: RequestInit = {}): Promise<unknown> 
 }
 
 export async function ensureDatabases(): Promise<void> {
-  for (const db of ['contact_messages', 'bot_state']) {
+  for (const db of ['contact_messages', 'bot_state', 'image_jobs']) {
     try {
       await couch(`/${db}`, { method: 'PUT' });
     } catch (e: unknown) {
