@@ -130,6 +130,20 @@ services:
       couchdb:
         condition: service_healthy
 
+  imagemagick:
+    build:
+      context: ./imagemagick-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - NATS_URL=nats://nats:4222
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - backend
+    depends_on:
+      nats:
+        condition: service_healthy
+
 networks:
   proxy:
     driver: bridge

@@ -1,0 +1,11 @@
+{
+  "name": "imagemagick-service",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "nats": "^2.28.2"
+  }
+}
