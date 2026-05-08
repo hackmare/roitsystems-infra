@@ -1,6 +1,7 @@
 import { connect } from 'nats';
 import { readFile, writeFile } from 'fs/promises';
 import { resolve } from 'path';
+import { randomUUID } from 'crypto';
 
 const NATS_URL = process.env.NATS_URL || 'nats://localhost:4222';
 const TIMEOUT_MS = 30000;
@@ -8,6 +9,7 @@ const TIMEOUT_MS = 30000;
 async function convertSocialPreview() {
   const svgPath = resolve('../roitsystems.ca/public/images/social-preview.svg');
   const pngPath = resolve('../roitsystems.ca/public/images/social-preview.png');
+  const transactionId = randomUUID();
 
   try {
     console.log(`Reading ${svgPath}...`);
@@ -17,20 +19,37 @@ async function convertSocialPreview() {
     console.log(`Connecting to NATS at ${NATS_URL}...`);
     const nc = await connect({ servers: NATS_URL });
 
-    console.log(`Sending conversion request to image.convert...`);
+    // Subscribe to image.ready before publishing request
+    const responsePromise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error(`Timeout waiting for conversion (${TIMEOUT_MS}ms)`));
+      }, TIMEOUT_MS);
+
+      const sub = nc.subscribe('image.ready');
+      (async () => {
+        for await (const msg of sub) {
+          const result = JSON.parse(new TextDecoder().decode(msg.data));
+          if (result.transaction_id === transactionId) {
+            clearTimeout(timeout);
+            sub.unsubscribe();
+            resolve(result);
+            break;
+          }
+        }
+      })();
+    });
+
+    console.log(`Sending conversion request to image.convert (transaction: ${transactionId})...`);
     const request = {
+      transaction_id: transactionId,
       format_in: 'svg',
       format_out: 'png',
       data: base64Svg
     };
 
-    const response = await nc.request(
-      'image.convert',
-      new TextEncoder().encode(JSON.stringify(request)),
-      { timeout: TIMEOUT_MS }
-    );
+    nc.publish('image.convert', new TextEncoder().encode(JSON.stringify(request)));
 
-    const result = JSON.parse(new TextDecoder().decode(response.data));
+    const result = await responsePromise;
 
     if (!result.success) {
       console.error(`Conversion failed: ${result.error}`);
