@@ -4,12 +4,14 @@
  * Usage: node reprocess-contacts.js "2026-05-08T08:01:00Z"
  */
 
-const { connect } = require('nats');
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
 const fs = require('fs');
 const path = require('path');
+
+// Require nats from api/node_modules
+const { connect } = require(path.join(__dirname, 'api', 'node_modules', 'nats'));
 
 // Load .env from contact-inbox directory
 const envPath = path.join(__dirname, '.env');
