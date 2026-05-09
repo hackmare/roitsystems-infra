@@ -27,6 +27,12 @@
     # and can cause issues in some configurations. CSP provides better XSS protection.
   }
 
+  # public contact form API endpoint (from roitsystems.ca)
+  @contact-api path /api/contact /api/contact/*
+  handle @contact-api {
+    reverse_proxy contact-inbox-api:3000
+  }
+
   # corporate-network dashboard (root)
   @network-root path /corporate-network /corporate-network/
   handle @network-root {
@@ -34,7 +40,7 @@
     reverse_proxy contact-inbox-api:3000
   }
 
-  # corporate-network contact routes
+  # corporate-network contact routes (admin interface, internal only)
   @contact path /corporate-network/contact /corporate-network/contact/*
   handle @contact {
     uri strip_prefix /corporate-network/contact
