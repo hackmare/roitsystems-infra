@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { imageJobsRoutes } from './routes/image-jobs';
-import { connectNats, closeNats, getJetStreamClient, sc } from './services/nats';
+import { connectNats, closeNats, getJetStreamClient, getNatsConnection, sc } from './services/nats';
 import { ensureDatabases, updateImageJobStatus } from './services/image-jobs';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -56,9 +56,16 @@ async function bootstrap() {
   await connectNats();
 
   const js = getJetStreamClient();
-  const sub = await js.subscribe('image.ready');
-  (async () => {
-    for await (const msg of sub) {
+  const nc = getNatsConnection();
+
+  js.subscribe('image.ready', {
+    callback: async (err, msg) => {
+      if (err) {
+        server.log.error(err, 'Error receiving image.ready message');
+        return;
+      }
+      if (!msg) return;
+
       try {
         const event = JSON.parse(new TextDecoder().decode(msg.data));
         if (event.success && event.transaction_id) {
@@ -73,7 +80,7 @@ async function bootstrap() {
         server.log.error(err, 'Failed to handle image.ready message');
       }
     }
-  })();
+  });
 }
 
 async function shutdown(signal: string) {
