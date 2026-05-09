@@ -56,7 +56,7 @@ async function bootstrap() {
   await connectNats();
 
   const js = getJetStreamClient();
-  const sub = await js.subscribe('image.ready', { durable: 'image-converter-api' });
+  const sub = await js.subscribe('image.ready');
   (async () => {
     for await (const msg of sub) {
       try {
