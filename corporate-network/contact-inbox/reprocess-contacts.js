@@ -15,14 +15,19 @@ const COUCHDB_PASSWORD = process.env.COUCHDB_PASSWORD || 'password';
 const since = process.argv[2];
 
 if (!since) {
-  console.error('Usage: node reprocess-contacts.js "2026-05-08T08:01:00Z"');
-  console.error('Argument must be a UTC datetime string (ISO 8601 format)');
+  console.error('Usage: node reprocess-contacts.js "2026-05-08T00:01:00-08:00"');
+  console.error('       node reprocess-contacts.js "2026-05-08T08:01:00Z"');
+  console.error('Argument must be a datetime string (ISO 8601 format with timezone)');
   process.exit(1);
 }
 
-// Validate ISO 8601 format
-if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(since)) {
-  console.error('Error: Invalid datetime format. Use ISO 8601 UTC format: YYYY-MM-DDTHH:MM:SSZ');
+// Validate ISO 8601 format (with Z or timezone offset)
+const iso8601Regex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/;
+if (!iso8601Regex.test(since)) {
+  console.error('Error: Invalid datetime format.');
+  console.error('Use ISO 8601 format with timezone:');
+  console.error('  UTC: YYYY-MM-DDTHH:MM:SSZ (e.g., 2026-05-08T08:01:00Z)');
+  console.error('  PST: YYYY-MM-DDTHH:MM:SS-08:00 (e.g., 2026-05-08T00:01:00-08:00)');
   process.exit(1);
 }
 
