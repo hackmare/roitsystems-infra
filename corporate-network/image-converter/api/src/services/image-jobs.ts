@@ -34,6 +34,15 @@ async function couch(path: string, options: RequestInit = {}): Promise<unknown> 
   }
 }
 
+export async function ensureDatabases(): Promise<void> {
+  try {
+    await couch('/image_jobs', { method: 'PUT' });
+  } catch (e: unknown) {
+    // 412 Precondition Failed = database already exists — safe to ignore
+    if (!(e instanceof Error) || !e.message.includes('412')) throw e;
+  }
+}
+
 export function initImageJobs(): void {
   // Initialize image jobs database if needed (ensure table exists, etc.)
   // For now, just a placeholder as CouchDB creates tables on demand
