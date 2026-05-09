@@ -117,8 +117,42 @@ async function main() {
             await execFileAsync('convert', args);
 
             // Read output file
-            const outputBuffer = await readFile(outputPath);
-            const base64Output = outputBuffer.toString('base64');
+            let base64Output = '';
+
+            if (format_out.toLowerCase() === 'svg') {
+              // For SVG, we need to embed the raster image in an SVG container
+              // Convert to PNG first, then wrap in SVG
+              const pngPath = join(tmpdir(), `convert-${tmpId}-temp.png`);
+
+              // Re-run convert to generate PNG
+              const pngArgs = [...args.slice(0, -1)]; // Remove output path
+              pngArgs.push(pngPath);
+              await execFileAsync('convert', pngArgs);
+
+              // Read PNG and encode as base64
+              const pngBuffer = await readFile(pngPath);
+              const pngBase64 = pngBuffer.toString('base64');
+
+              // Get image dimensions
+              const identifyResult = await execFileAsync('identify', ['-format', '%wx%h', pngPath]);
+              const [width, height] = identifyResult.stdout.split('x').map(Number);
+
+              // Create SVG wrapper
+              const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <image x="0" y="0" width="${width}" height="${height}" xlink:href="data:image/png;base64,${pngBase64}"/>
+</svg>`;
+
+              base64Output = Buffer.from(svgContent).toString('base64');
+
+              // Clean up PNG temp file
+              try {
+                await unlinkAsync(pngPath);
+              } catch (e) {}
+            } else {
+              const outputBuffer = await readFile(outputPath);
+              base64Output = outputBuffer.toString('base64');
+            }
 
             // Publish result with transaction_id
             nc.publish('image.ready', new TextEncoder().encode(
