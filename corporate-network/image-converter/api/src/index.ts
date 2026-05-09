@@ -16,6 +16,7 @@ const server = Fastify({
     },
   },
   trustProxy: true,
+  bodyLimit: 50 * 1024 * 1024,
 });
 
 async function bootstrap() {
