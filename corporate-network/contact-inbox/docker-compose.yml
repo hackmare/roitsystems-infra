@@ -1,0 +1,68 @@
+version: '3.8'
+
+networks:
+  corporate-backend:
+    external: true
+
+services:
+  contact-inbox-api:
+    build: ./api
+    container_name: contact-inbox-api
+    environment:
+      PORT: 3000
+      NODE_ENV: ${NODE_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      COUCHDB_URL: http://couchdb:5984
+      COUCHDB_USER: ${COUCHDB_USER}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
+      NATS_URL: nats://nats:4222
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-10}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
+    networks:
+      - corporate-backend
+    depends_on:
+      - couchdb
+      - nats
+    restart: unless-stopped
+
+  contact-inbox-worker:
+    build: ./worker
+    container_name: contact-inbox-worker
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      COUCHDB_URL: http://couchdb:5984
+      COUCHDB_USER: ${COUCHDB_USER}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
+      NATS_URL: nats://nats:4222
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY}
+    networks:
+      - corporate-backend
+    depends_on:
+      - couchdb
+      - nats
+    restart: unless-stopped
+
+  contact-inbox-notification:
+    build: ./notification-service
+    container_name: contact-inbox-notification
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NATS_URL: nats://nats:4222
+      COUCHDB_URL: http://couchdb:5984
+      COUCHDB_USER: ${COUCHDB_USER}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      NOTIFICATION_EMAIL: ${NOTIFICATION_EMAIL}
+      NOTIFICATION_FROM_EMAIL: ${NOTIFICATION_FROM_EMAIL}
+      NOTIFICATION_WEBHOOK_URL: ${NOTIFICATION_WEBHOOK_URL:-}
+    networks:
+      - corporate-backend
+    depends_on:
+      - couchdb
+      - nats
+    restart: unless-stopped

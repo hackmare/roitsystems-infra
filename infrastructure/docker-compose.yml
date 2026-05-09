@@ -1,0 +1,49 @@
+version: '3.8'
+
+networks:
+  corporate-backend:
+    name: corporate-backend
+    driver: bridge
+
+services:
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+      CADDY_EMAIL: ${CADDY_EMAIL}
+    networks:
+      - corporate-backend
+    depends_on:
+      - nats
+      - couchdb
+
+  nats:
+    image: nats:2
+    command: ["-c", "/etc/nats/nats.conf"]
+    volumes:
+      - ./nats/nats.conf:/etc/nats/nats.conf
+      - nats-data:/data
+    networks:
+      - corporate-backend
+
+  couchdb:
+    image: couchdb:3
+    environment:
+      COUCHDB_USER: ${COUCHDB_USER}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
+      NODE_ENV: ${NODE_ENV:-production}
+    volumes:
+      - couchdb-data:/opt/couchdb/data
+    networks:
+      - corporate-backend
+
+volumes:
+  caddy-data:
+  nats-data:
+  couchdb-data:

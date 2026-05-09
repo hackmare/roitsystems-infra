@@ -44,22 +44,6 @@ export async function connectNats(): Promise<void> {
       throw e;
     }
   }
-
-  // Create IMAGE_JOBS stream
-  try {
-    await jsm.streams.add({
-      name: 'IMAGE_JOBS',
-      subjects: ['image.convert', 'image.ready'],
-      storage: StorageType.File,
-      retention: RetentionPolicy.Limits,
-      max_age: 7 * 24 * 60 * 60 * 1_000_000_000,
-      num_replicas: 1,
-    });
-  } catch (e: unknown) {
-    if (!(e instanceof Error) || !e.message.includes('stream name already in use')) {
-      throw e;
-    }
-  }
 }
 
 export async function publishContactMessage(messageId: string): Promise<void> {

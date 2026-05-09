@@ -25,10 +25,22 @@
     # and can cause issues in some configurations. CSP provides better XSS protection.
   }
 
-  # API and admin routes go to the Node service
-  @app path /api/* /admin /admin/* /health
-  handle @app {
-    reverse_proxy api:3000
+  # contact-inbox routes
+  @contact-inbox path /api/contact /api/contact/* /api/admin/messages /api/admin/messages/* /admin /admin/*
+  handle @contact-inbox {
+    reverse_proxy contact-inbox-api:3000
+  }
+
+  # image-converter routes
+  @image-converter path /api/admin/image-jobs /api/admin/image-jobs/* /admin/image-convert /admin/image-convert/*
+  handle @image-converter {
+    reverse_proxy image-converter-api:3000
+  }
+
+  # shared health check (contact-inbox)
+  @health path /health
+  handle @health {
+    reverse_proxy contact-inbox-api:3000
   }
 
   # Block everything else

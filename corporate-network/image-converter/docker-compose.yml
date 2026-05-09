@@ -1,0 +1,43 @@
+version: '3.8'
+
+networks:
+  corporate-backend:
+    external: true
+
+services:
+  image-converter-api:
+    build: ./api
+    container_name: image-converter-api
+    environment:
+      PORT: 3000
+      NODE_ENV: ${NODE_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      COUCHDB_URL: http://couchdb:5984
+      COUCHDB_USER: ${COUCHDB_USER}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
+      NATS_URL: nats://nats:4222
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
+    networks:
+      - corporate-backend
+    depends_on:
+      - couchdb
+      - nats
+    restart: unless-stopped
+
+  imagemagick-service:
+    build: ./imagemagick-service
+    container_name: imagemagick-service
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NATS_URL: nats://nats:4222
+      COUCHDB_URL: http://couchdb:5984
+      COUCHDB_USER: ${COUCHDB_USER}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
+    networks:
+      - corporate-backend
+    depends_on:
+      - couchdb
+      - nats
+    restart: unless-stopped
