@@ -4,8 +4,10 @@
  * Usage: node reprocess-contacts.js "2026-05-08T08:01:00Z"
  */
 
-import { connect } from 'nats';
-import fetch from 'node-fetch';
+const { connect } = require('nats');
+const http = require('http');
+const https = require('https');
+const { URL } = require('url');
 
 const NATS_URL = process.env.NATS_URL || 'nats://nats:4222';
 const COUCHDB_URL = process.env.COUCHDB_URL || 'http://couchdb:5984';
@@ -31,6 +33,25 @@ if (!iso8601Regex.test(since)) {
   process.exit(1);
 }
 
+function fetchJson(url, options) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const client = urlObj.protocol === 'https:' ? https : http;
+
+    client.request(url, options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => (data += chunk));
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(JSON.parse(data));
+        } else {
+          reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+        }
+      });
+    }).on('error', reject).end(options.body);
+  });
+}
+
 async function main() {
   try {
     console.log(`Reprocessing contacts since ${since}...`);
@@ -49,22 +70,18 @@ async function main() {
       sort: [{ created_at: 'asc' }]
     };
 
-    const response = await fetch(`${COUCHDB_URL}/contact_messages/_find`, {
+    const body = JSON.stringify(query);
+    const result = await fetchJson(`${COUCHDB_URL}/contact_messages/_find`, {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${auth}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
       },
-      body: JSON.stringify(query)
+      body
     });
 
-    if (!response.ok) {
-      throw new Error(`CouchDB error: ${response.status} ${response.statusText}`);
-    }
-
-    const result = await response.json();
     const contacts = result.docs || [];
-
     console.log(`Found ${contacts.length} contacts to reprocess`);
 
     if (contacts.length === 0) {
