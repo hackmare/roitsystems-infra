@@ -37,7 +37,7 @@ async function main() {
       (async () => {
         try {
           const request = JSON.parse(new TextDecoder().decode(msg.data));
-          const { transaction_id, format_in, format_out, data: base64Data } = request;
+          const { transaction_id, format_in, format_out, data: base64Data, params = {} } = request;
 
           if (!transaction_id || !base64Data || !format_in || !format_out) {
             const error = 'Missing required fields: transaction_id, data, format_in, format_out';
@@ -58,14 +58,63 @@ async function main() {
             // Write input file
             await writeFile(inputPath, inputBuffer);
 
+            // Build ImageMagick convert command with parameters
+            const args = ['-density', String(params.density || 72)];
+
+            // Input file (use [0] to select first frame for multi-frame images)
+            args.push(`${inputPath}[0]`);
+
+            // Resize with aspect ratio lock if specified
+            if (params.width || params.height) {
+              const w = params.width || '';
+              const h = params.height || '';
+              const lockAR = params.lockAspectRatio ? '' : '!';
+              args.push('-resize', `${w}x${h}${lockAR}`);
+            }
+
+            // Rotate
+            if (params.rotate && params.rotate !== 0) {
+              args.push('-rotate', String(params.rotate));
+            }
+
+            // Trim whitespace
+            if (params.trim) {
+              args.push('-trim');
+            }
+
+            // Colorspace
+            if (params.colorspace && params.colorspace !== 'sRGB') {
+              args.push('-colorspace', params.colorspace);
+            }
+
+            // Background color (for flattening transparent areas)
+            if (params.background) {
+              args.push('-background', params.background);
+            }
+
+            // Flatten (merge layers and remove transparency)
+            if (params.flatten) {
+              args.push('-flatten');
+            }
+
+            // Blur
+            if (params.blur && params.blur > 0) {
+              args.push('-blur', `0x${params.blur}`);
+            }
+
+            // Sharpen
+            if (params.sharpen && params.sharpen > 0) {
+              args.push('-sharpen', `0x${params.sharpen}`);
+            }
+
+            // Quality (for lossy formats)
+            args.push('-quality', String(params.quality || 85));
+
+            // Output format and path
+            args.push(outputPath);
+
             // Run ImageMagick convert
-            const convertCmd = `${inputPath}[0]`;
-            await execFileAsync('convert', [
-              '-density', '300',
-              convertCmd,
-              '-quality', '85',
-              outputPath
-            ]);
+            await execFileAsync('convert', args);
 
             // Read output file
             const outputBuffer = await readFile(outputPath);
