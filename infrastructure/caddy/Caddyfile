@@ -25,10 +25,10 @@
     # and can cause issues in some configurations. CSP provides better XSS protection.
   }
 
-  # corporate-network contact-inbox routes
-  @contact-inbox path /corporate-network/contact-inbox /corporate-network/contact-inbox/*
-  handle @contact-inbox {
-    uri strip_prefix /corporate-network/contact-inbox
+  # corporate-network contact routes
+  @contact path /corporate-network/contact /corporate-network/contact/*
+  handle @contact {
+    uri strip_prefix /corporate-network/contact
     reverse_proxy contact-inbox-api:3000
   }
 
