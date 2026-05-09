@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { imageJobsRoutes } from './routes/image-jobs';
-import { connectNats, closeNats, getJetStreamClient, getNatsConnection, sc } from './services/nats';
+import { connectNats, closeNats, getJetStreamClient, sc } from './services/nats';
 import { ensureDatabases, updateImageJobStatus } from './services/image-jobs';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -56,31 +56,29 @@ async function bootstrap() {
   await connectNats();
 
   const js = getJetStreamClient();
-  const nc = getNatsConnection();
 
-  js.subscribe('image.ready', {
-    callback: async (err, msg) => {
-      if (err) {
-        server.log.error(err, 'Error receiving image.ready message');
-        return;
-      }
-      if (!msg) return;
-
-      try {
-        const event = JSON.parse(new TextDecoder().decode(msg.data));
-        if (event.success && event.transaction_id) {
-          await updateImageJobStatus(event.transaction_id, 'done', event.data);
-          server.log.info({ transaction_id: event.transaction_id }, 'image conversion completed');
-        } else if (!event.success && event.transaction_id) {
-          await updateImageJobStatus(event.transaction_id, 'error', undefined, event.error);
-          server.log.error({ transaction_id: event.transaction_id, error: event.error }, 'image conversion failed');
+  (async () => {
+    try {
+      const sub = await js.subscribe('image.ready');
+      for await (const msg of sub) {
+        try {
+          const event = JSON.parse(sc.decode(msg.data));
+          if (event.success && event.transaction_id) {
+            await updateImageJobStatus(event.transaction_id, 'done', event.data);
+            server.log.info({ transaction_id: event.transaction_id }, 'image conversion completed');
+          } else if (!event.success && event.transaction_id) {
+            await updateImageJobStatus(event.transaction_id, 'error', undefined, event.error);
+            server.log.error({ transaction_id: event.transaction_id, error: event.error }, 'image conversion failed');
+          }
+          msg.ack();
+        } catch (err) {
+          server.log.error(err, 'Failed to handle image.ready message');
         }
-        msg.ack();
-      } catch (err) {
-        server.log.error(err, 'Failed to handle image.ready message');
       }
+    } catch (err) {
+      server.log.error(err, 'Failed to subscribe to image.ready');
     }
-  });
+  })();
 }
 
 async function shutdown(signal: string) {
