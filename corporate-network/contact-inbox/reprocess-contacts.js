@@ -8,6 +8,23 @@ const { connect } = require('nats');
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
+const fs = require('fs');
+const path = require('path');
+
+// Load .env from contact-inbox directory
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  const envFile = fs.readFileSync(envPath, 'utf8');
+  envFile.split('\n').forEach((line) => {
+    if (line && !line.startsWith('#')) {
+      const [key, ...valueParts] = line.split('=');
+      const value = valueParts.join('=');
+      if (!process.env[key]) {
+        process.env[key] = value;
+      }
+    }
+  });
+}
 
 const NATS_URL = process.env.NATS_URL || 'nats://nats:4222';
 const COUCHDB_URL = process.env.COUCHDB_URL || 'http://couchdb:5984';
