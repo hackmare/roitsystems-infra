@@ -56,15 +56,17 @@ async function bootstrap() {
   await ensureDatabases();
   await connectNats();
 
-  (async () => {
+  setTimeout(async () => {
     try {
+      server.log.info('Starting image.ready listener');
       const consumer = await getImageReadyConsumer();
+      server.log.info('Got image.ready consumer, starting to consume messages');
       const messages = await consumer.consume();
-      server.log.info('Listening for image.ready messages');
 
       for await (const msg of messages) {
         try {
           const event = JSON.parse(sc.decode(msg.data));
+          server.log.debug({ event }, 'Received image.ready message');
           if (event.success && event.transaction_id) {
             await updateImageJobStatus(event.transaction_id, 'done', event.data);
             server.log.info({ transaction_id: event.transaction_id }, 'image conversion completed');
@@ -78,9 +80,9 @@ async function bootstrap() {
         }
       }
     } catch (err) {
-      server.log.error(err, 'Failed to listen for image.ready');
+      server.log.error(err, 'Failed to start image.ready listener');
     }
-  })();
+  }, 1000);
 }
 
 async function shutdown(signal: string) {
