@@ -25,19 +25,21 @@
     # and can cause issues in some configurations. CSP provides better XSS protection.
   }
 
-  # contact-inbox routes
-  @contact-inbox path /api/contact /api/contact/* /api/admin/messages /api/admin/messages/* /admin /admin/*
+  # contact-inbox routes — strip /contact-inbox prefix before forwarding
+  @contact-inbox path /contact-inbox /contact-inbox/*
   handle @contact-inbox {
+    uri strip_prefix /contact-inbox
     reverse_proxy contact-inbox-api:3000
   }
 
-  # image-converter routes
-  @image-converter path /api/admin/image-jobs /api/admin/image-jobs/* /admin/image-convert /admin/image-convert/*
+  # image-converter routes — strip /image-converter prefix before forwarding
+  @image-converter path /image-converter /image-converter/*
   handle @image-converter {
+    uri strip_prefix /image-converter
     reverse_proxy image-converter-api:3000
   }
 
-  # shared health check (contact-inbox)
+  # shared health check (contact-inbox) at root
   @health path /health
   handle @health {
     reverse_proxy contact-inbox-api:3000
