@@ -9,11 +9,12 @@ Private message-ingestion infrastructure for [roitsystems.ca](https://roitsystem
 
 ## What this does
 
-1. Accepts contact-form submissions from roitsystems.ca via a secure HTTPS API.
-2. Stores each message durably in CouchDB.
-3. Publishes an event to NATS JetStream so the worker can process it asynchronously.
-4. Worker marks messages as processed and fires an optional notification webhook.
-5. Private admin UI lists all messages with status.
+1. **Contact Ingestion**: Accepts contact-form submissions from roitsystems.ca via a secure HTTPS API.
+2. **Message Storage**: Stores each message durably in CouchDB.
+3. **AI Analysis**: Worker processes messages asynchronously via NATS, calling Claude API for intelligent analysis (company research, competitive insights, market timing).
+4. **Notifications**: Sends email summaries via Resend with extracted intelligence and recommendations.
+5. **Image Conversion**: Internal admin tool for converting images with ImageMagick (PNG, JPG, WebP, GIF, TIFF) with advanced parameters.
+6. **Admin Dashboard**: Private UI for managing messages and image conversions.
 
 ## Quick start (local)
 
@@ -45,13 +46,25 @@ docker compose up -d --build
 
 ## Endpoints
 
+### Contact Messages
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `POST` | `/api/contact` | None (rate-limited) | Submit a contact message |
-| `GET` | `/health` | None | Liveness check |
-| `GET` | `/admin` | Token (browser UI) | Admin message viewer |
 | `GET` | `/api/admin/messages` | Bearer token | List all messages (JSON) |
 | `GET` | `/api/admin/messages/:id` | Bearer token | Get a single message (JSON) |
+
+### Image Converter
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/admin/image-jobs` | Bearer token (rate-limited) | Submit an image conversion job |
+| `GET` | `/api/admin/image-jobs/:transaction_id` | Bearer token | Poll for job status and result |
+
+### Admin UI
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/health` | None | Liveness check |
+| `GET` | `/admin` | Token (browser UI) | Admin message viewer |
+| `GET` | `/admin/image-convert` | Token (browser UI) | Image converter admin tool |
 
 ## Contact form payload
 
@@ -73,14 +86,82 @@ docker compose up -d --build
 
 `hp` is the honeypot field — must be empty. `company`, `budget`, `timeline`, `source_page`, `timestamp`, and `consent` are optional.
 
+## Image conversion job payload
+
+```json
+{
+  "params": {
+    "format": "webp",
+    "quality": 85,
+    "width": 1200,
+    "height": 630,
+    "rotate": 0,
+    "trim": false,
+    "colorspace": "sRGB",
+    "background": "#ffffff",
+    "flatten": false,
+    "density": 72,
+    "blur": 0,
+    "sharpen": 0
+  }
+}
+```
+
+Multipart form data: field `file` contains the binary image, field `params` contains the JSON above (stringified). Response:
+
+```json
+{
+  "transaction_id": "uuid-here",
+  "status": "queued",
+  "params": {...},
+  "filename": "original-filename.png",
+  "created_at": "2026-05-08T19:00:00.000Z",
+  "updated_at": "2026-05-08T19:00:00.000Z"
+}
+```
+
+Poll `GET /api/admin/image-jobs/:transaction_id` with the `transaction_id` above. When `status === "done"`, the response includes `data` (base64-encoded PNG):
+
+```json
+{
+  "transaction_id": "uuid-here",
+  "status": "done",
+  "data": "iVBORw0KGgo...base64-encoded-image...",
+  "updated_at": "2026-05-08T19:00:15.000Z"
+}
+```
+
 ## Admin access
 
-Open `https://api.roitsystems.ca/admin` in your browser and enter the `ADMIN_TOKEN`.
+### Message Viewer
+Open `https://api.roitsystems.ca/admin` in your browser and enter the `ADMIN_TOKEN`. View all contact messages, their status, and AI-generated insights.
 
-For API access:
+### Image Converter
+Open `https://api.roitsystems.ca/admin/image-convert` in your browser and enter the `ADMIN_TOKEN`. Upload images and convert them using ImageMagick with:
+- Format conversion (PNG, JPG, WebP, GIF, TIFF, BMP, etc.)
+- Resize with aspect ratio lock
+- Rotation, trim, blur, sharpen
+- Quality control and color space adjustment
+- Batch history tracking
 
+### API Access
 ```bash
+# List messages
 curl -H "Authorization: Bearer $ADMIN_TOKEN" https://api.roitsystems.ca/api/admin/messages
+
+# Get a single message
+curl -H "Authorization: Bearer $ADMIN_TOKEN" https://api.roitsystems.ca/api/admin/messages/{message_id}
+
+# Submit image conversion job
+curl -X POST \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -F "file=@image.png" \
+  -F "params={\"format\":\"webp\",\"quality\":85}" \
+  https://api.roitsystems.ca/api/admin/image-jobs
+
+# Poll for job status
+curl -H "Authorization: Bearer $ADMIN_TOKEN" \
+  https://api.roitsystems.ca/api/admin/image-jobs/{transaction_id}
 ```
 
 ## Documentation
@@ -93,15 +174,18 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" https://api.roitsystems.ca/api/admi
 
 ```
 roitsystems-infra/
-  docker-compose.yml     # all services
-  .env.example           # configuration template
-  caddy/Caddyfile        # reverse proxy + TLS config
-  nats/nats.conf         # JetStream config
-  api/                   # contact API (TypeScript/Fastify)
-  worker/                # JetStream consumer (TypeScript)
+  docker-compose.yml           # all services
+  .env.example                 # configuration template
+  caddy/Caddyfile              # reverse proxy + TLS config
+  nats/nats.conf               # JetStream config
+  api/                         # contact API + image converter (TypeScript/Fastify)
+    src/
+      admin-image-convert.html # image converter admin UI
+  worker/                      # contact message processor (TypeScript)
+  imagemagick-service/         # image conversion worker (Node.js)
   scripts/
-    init-couchdb.sh      # manual DB initialisation helper
-    healthcheck.sh       # post-deploy health verification
+    init-couchdb.sh            # manual DB initialisation helper
+    healthcheck.sh             # post-deploy health verification
   docs/
     architecture.md
     security.md
