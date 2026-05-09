@@ -470,7 +470,8 @@
             img.onerror = () => {
               preview.innerHTML = `<div style="color: #991b1b; text-align: center;">Failed to display image</div>`;
             };
-            img.src = `data:image/${format};base64,${job.data}`;
+            const mimeType = format.toLowerCase() === 'svg' ? 'image/svg+xml' : `image/${format}`;
+            img.src = `data:${mimeType};base64,${job.data}`;
           } else {
             preview.innerHTML = `<div style="color: #64748b; text-align: center;">
               <div style="font-size: 0.9rem; margin-bottom: 0.5rem;">Image format not supported in browser</div>
@@ -496,7 +497,8 @@
     const ext = document.getElementById('format_out').value;
     const filename = (selectedFile?.name || 'image').replace(/\.[^/.]+$/, '') + '.' + ext;
     const link = document.createElement('a');
-    link.href = `data:image/${ext};base64,${currentJobData}`;
+    const mimeType = ext.toLowerCase() === 'svg' ? 'image/svg+xml' : `image/${ext}`;
+    link.href = `data:${mimeType};base64,${currentJobData}`;
     link.download = filename;
     link.click();
   }
