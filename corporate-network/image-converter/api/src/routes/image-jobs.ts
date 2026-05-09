@@ -33,6 +33,7 @@ function requireAuth(request: FastifyRequest, reply: FastifyReply): boolean {
 
 const submitJobSchema = z.object({
   filename: z.string().min(1).max(255),
+  data: z.string(),
   format_in: z.string().min(1).max(10),
   format_out: z.string().min(1).max(10),
   quality: z.number().int().min(1).max(100).optional(),
@@ -88,7 +89,7 @@ export const imageJobsRoutes: FastifyPluginAsync = async (server) => {
         sharpen: data.sharpen,
       });
 
-      await publishImageConvertJob(job.transaction_id);
+      await publishImageConvertJob(job.transaction_id, data.data, data.format_in, data.format_out);
 
       request.log.info(
         { transaction_id: job.transaction_id, filename: data.filename },

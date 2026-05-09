@@ -22,9 +22,6 @@ services:
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
     networks:
       - corporate-backend
-    depends_on:
-      - couchdb
-      - nats
     restart: unless-stopped
 
   contact-inbox-worker:
@@ -40,9 +37,6 @@ services:
       CLAUDE_API_KEY: ${CLAUDE_API_KEY}
     networks:
       - corporate-backend
-    depends_on:
-      - couchdb
-      - nats
     restart: unless-stopped
 
   contact-inbox-notification:
@@ -62,7 +56,4 @@ services:
       NOTIFICATION_WEBHOOK_URL: ${NOTIFICATION_WEBHOOK_URL:-}
     networks:
       - corporate-backend
-    depends_on:
-      - couchdb
-      - nats
     restart: unless-stopped

@@ -74,7 +74,12 @@ export async function createImageJob(
   return job;
 }
 
-export async function publishImageConvertJob(transactionId: string): Promise<void> {
+export async function publishImageConvertJob(
+  transactionId: string,
+  data: string,
+  format_in: string,
+  format_out: string
+): Promise<void> {
   const job = await getImageJob(transactionId);
   if (!job) {
     throw new Error(`Job not found: ${transactionId}`);
@@ -83,6 +88,9 @@ export async function publishImageConvertJob(transactionId: string): Promise<voi
   const event = {
     transaction_id: transactionId,
     type: 'image.convert',
+    data,
+    format_in,
+    format_out,
     params: job.params,
   };
 

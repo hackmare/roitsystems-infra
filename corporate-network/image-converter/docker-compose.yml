@@ -20,9 +20,6 @@ services:
       ADMIN_TOKEN: ${ADMIN_TOKEN}
     networks:
       - corporate-backend
-    depends_on:
-      - couchdb
-      - nats
     restart: unless-stopped
 
   imagemagick-service:
@@ -37,7 +34,4 @@ services:
       COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
     networks:
       - corporate-backend
-    depends_on:
-      - couchdb
-      - nats
     restart: unless-stopped
