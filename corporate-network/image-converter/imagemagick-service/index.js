@@ -61,8 +61,11 @@ async function main() {
             // Build ImageMagick convert command with parameters
             const args = ['-density', String(params.density || 72)];
 
-            // Background color (set early so it applies to all operations)
-            if (params.background) {
+            // Handle transparency: if transparentBackground is true, ensure alpha is on
+            if (params.transparentBackground) {
+              args.push('-alpha', 'on');
+            } else if (params.background) {
+              // Background color (set early so it applies to all operations)
               let bgColor = params.background;
               // Remove # if present, ImageMagick accepts both formats
               if (bgColor.startsWith('#')) bgColor = bgColor.slice(1);
@@ -96,7 +99,8 @@ async function main() {
             }
 
             // Flatten (merge layers and use background color for transparency)
-            if (params.flatten) {
+            // Skip flatten if transparentBackground is enabled
+            if (params.flatten && !params.transparentBackground) {
               args.push('-flatten');
             }
 

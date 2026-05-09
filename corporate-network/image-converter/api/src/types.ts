@@ -10,6 +10,7 @@ export interface ImageJobParams {
   colorspace?: string;
   background?: string;
   flatten?: boolean;
+  transparentBackground?: boolean;
   density?: number;
   blur?: number;
   sharpen?: number;

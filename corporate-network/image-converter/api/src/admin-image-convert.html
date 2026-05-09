@@ -214,6 +214,17 @@
           </label>
         </div>
 
+        <div class="checkbox-group" style="margin-bottom: 1rem;">
+          <input type="checkbox" id="transparentBackground">
+          <label for="transparentBackground" style="margin: 0;">
+            Make background transparent
+            <button class="info-btn tooltip-container" style="margin-left: 0.25rem;">
+              ⓘ
+              <div class="tooltip">Makes the background transparent instead of filling with a solid colour. Works best with PNG, WebP, or GIF. Cannot be used with flatten.</div>
+            </button>
+          </label>
+        </div>
+
         <div class="section-title">Effects</div>
         <div class="form-group">
           <label class="form-label">
@@ -401,6 +412,7 @@
           colorspace: document.getElementById('colorspace').value,
           background: document.getElementById('background').value,
           flatten: document.getElementById('flatten').checked,
+          transparentBackground: document.getElementById('transparentBackground').checked,
           density: parseInt(document.getElementById('density').value),
           blur: parseFloat(document.getElementById('blur').value),
           sharpen: parseFloat(document.getElementById('sharpen').value),
