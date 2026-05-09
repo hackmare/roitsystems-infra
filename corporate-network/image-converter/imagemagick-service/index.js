@@ -61,6 +61,14 @@ async function main() {
             // Build ImageMagick convert command with parameters
             const args = ['-density', String(params.density || 72)];
 
+            // Background color (set early so it applies to all operations)
+            if (params.background) {
+              let bgColor = params.background;
+              // Remove # if present, ImageMagick accepts both formats
+              if (bgColor.startsWith('#')) bgColor = bgColor.slice(1);
+              args.push('-background', bgColor);
+            }
+
             // Input file (use [0] to select first frame for multi-frame images)
             args.push(`${inputPath}[0]`);
 
@@ -87,12 +95,7 @@ async function main() {
               args.push('-colorspace', params.colorspace);
             }
 
-            // Background color (for flattening transparent areas)
-            if (params.background) {
-              args.push('-background', params.background);
-            }
-
-            // Flatten (merge layers and remove transparency)
+            // Flatten (merge layers and use background color for transparency)
             if (params.flatten) {
               args.push('-flatten');
             }
