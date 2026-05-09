@@ -60,7 +60,7 @@ const adminRateLimit = {
 };
 
 export const imageJobsRoutes: FastifyPluginAsync = async (server) => {
-  server.post('/admin/image-jobs', adminRateLimit, async (request, reply) => {
+  server.post('/image-jobs', adminRateLimit, async (request, reply) => {
     if (!requireAuth(request, reply)) return;
 
     const result = submitJobSchema.safeParse(request.body);
@@ -105,7 +105,7 @@ export const imageJobsRoutes: FastifyPluginAsync = async (server) => {
     }
   });
 
-  server.get('/admin/image-jobs/:transaction_id', adminRateLimit, async (request, reply) => {
+  server.get('/image-jobs/:transaction_id', adminRateLimit, async (request, reply) => {
     if (!requireAuth(request, reply)) return;
 
     const { transaction_id } = request.params as { transaction_id: string };

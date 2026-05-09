@@ -39,7 +39,7 @@ async function bootstrap() {
   } catch (err) {
     server.log.warn('admin-image-convert.html not found');
   }
-  server.get('/admin/image-convert', async (_request, reply) => {
+  server.get('/convert', async (_request, reply) => {
     if (!imageConverterHtml) {
       return reply.status(404).send({ error: 'Not found' });
     }
