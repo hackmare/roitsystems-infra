@@ -401,7 +401,7 @@
           sharpen: parseFloat(document.getElementById('sharpen').value),
         };
 
-        const response = await fetch('/api/admin/image-jobs', {
+        const response = await fetch('../api/image-jobs', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -443,7 +443,7 @@
     clearPoll();
     pollTimeout = setTimeout(async () => {
       try {
-        const response = await fetch(`/api/admin/image-jobs/${currentJob}`, {
+        const response = await fetch(`../api/image-jobs/${currentJob}`, {
           headers: { 'Authorization': `Bearer ${authToken}` },
         });
 
