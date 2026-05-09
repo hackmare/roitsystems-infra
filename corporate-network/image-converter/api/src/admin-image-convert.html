@@ -475,8 +475,9 @@
             img.src = `data:${mimeType};base64,${job.data}`;
           } else {
             preview.innerHTML = `<div style="color: #64748b; text-align: center;">
-              <div style="font-size: 0.9rem; margin-bottom: 0.5rem;">Image format not supported in browser</div>
-              <div style="font-size: 0.85rem; color: #94a3b8;">Format: .${format}</div>
+              <div style="font-size: 0.9rem; margin-bottom: 0.75rem;">📥 This format cannot be displayed in the browser</div>
+              <div style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 1rem;">Format: <strong>.${format}</strong></div>
+              <div style="font-size: 0.9rem; color: #475569; line-height: 1.5;">Use the download button below to save your converted image.</div>
             </div>`;
           }
         } else if (job.status === 'error') {
