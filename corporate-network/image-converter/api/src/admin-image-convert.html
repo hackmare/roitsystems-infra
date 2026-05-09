@@ -285,6 +285,7 @@
   let authToken = null;
   let selectedFile = null;
   let currentJob = null;
+  let currentJobData = null;
   let pollTimeout = null;
   let recentJobs = [];
 
@@ -457,11 +458,25 @@
         setStatus(job.status, currentJob);
 
         if (job.status === 'done') {
+          currentJobData = job.data;
           document.getElementById('resultContainer').style.display = 'block';
+          const format = document.getElementById('format_out').value;
+          const browserFormats = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'];
           const preview = document.getElementById('previewContainer');
-          const img = new Image();
-          img.onload = () => preview.innerHTML = `<img src="${img.src}" class="preview-image">`;
-          img.src = `data:image/${document.getElementById('format_out').value};base64,${job.data}`;
+
+          if (browserFormats.includes(format.toLowerCase())) {
+            const img = new Image();
+            img.onload = () => preview.innerHTML = `<img src="${img.src}" class="preview-image">`;
+            img.onerror = () => {
+              preview.innerHTML = `<div style="color: #991b1b; text-align: center;">Failed to display image</div>`;
+            };
+            img.src = `data:image/${format};base64,${job.data}`;
+          } else {
+            preview.innerHTML = `<div style="color: #64748b; text-align: center;">
+              <div style="font-size: 0.9rem; margin-bottom: 0.5rem;">Image format not supported in browser</div>
+              <div style="font-size: 0.85rem; color: #94a3b8;">Format: .${format}</div>
+            </div>`;
+          }
         } else if (job.status === 'error') {
           const errorEl = document.getElementById('errorMessage');
           errorEl.innerHTML = `<div class="error-message">Error: ${job.error || 'Unknown error'}</div>`;
@@ -477,11 +492,11 @@
   }
 
   function downloadResult() {
-    if (!currentJob) return;
+    if (!currentJob || !currentJobData) return;
     const ext = document.getElementById('format_out').value;
     const filename = (selectedFile?.name || 'image').replace(/\.[^/.]+$/, '') + '.' + ext;
     const link = document.createElement('a');
-    link.href = `data:image/${ext};base64,${document.getElementById('previewContainer').querySelector('img').src.split(',')[1]}`;
+    link.href = `data:image/${ext};base64,${currentJobData}`;
     link.download = filename;
     link.click();
   }
