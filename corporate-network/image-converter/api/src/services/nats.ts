@@ -5,6 +5,9 @@ import {
   StringCodec,
   RetentionPolicy,
   StorageType,
+  Consumer,
+  AckPolicy,
+  DeliverPolicy,
 } from 'nats';
 
 let nc: NatsConnection | null = null;
@@ -43,6 +46,28 @@ export async function connectNats(): Promise<void> {
       throw e;
     }
   }
+}
+
+export async function getImageReadyConsumer(): Promise<Consumer> {
+  if (!js || !nc) throw new Error('NATS not connected');
+  const jsm = await nc.jetstreamManager();
+
+  try {
+    await jsm.consumers.add('IMAGE_JOBS', {
+      durable_name: 'api',
+      ack_policy: AckPolicy.Explicit,
+      deliver_policy: DeliverPolicy.All,
+      filter_subject: 'image.ready',
+      max_deliver: 5,
+      ack_wait: 30_000_000_000,
+    });
+  } catch (e: unknown) {
+    if (!(e instanceof Error) || !e.message.includes('consumer name already in use')) {
+      throw e;
+    }
+  }
+
+  return js.consumers.get('IMAGE_JOBS', 'api');
 }
 
 export async function closeNats(): Promise<void> {

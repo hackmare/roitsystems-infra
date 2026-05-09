@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { imageJobsRoutes } from './routes/image-jobs';
-import { connectNats, closeNats, getJetStreamClient, sc } from './services/nats';
+import { connectNats, closeNats, getImageReadyConsumer, sc } from './services/nats';
 import { ensureDatabases, updateImageJobStatus } from './services/image-jobs';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -55,12 +55,13 @@ async function bootstrap() {
   await ensureDatabases();
   await connectNats();
 
-  const js = getJetStreamClient();
-
   (async () => {
     try {
-      const sub = await js.subscribe('image.ready');
-      for await (const msg of sub) {
+      const consumer = await getImageReadyConsumer();
+      const messages = await consumer.consume();
+      server.log.info('Listening for image.ready messages');
+
+      for await (const msg of messages) {
         try {
           const event = JSON.parse(sc.decode(msg.data));
           if (event.success && event.transaction_id) {
@@ -76,7 +77,7 @@ async function bootstrap() {
         }
       }
     } catch (err) {
-      server.log.error(err, 'Failed to subscribe to image.ready');
+      server.log.error(err, 'Failed to listen for image.ready');
     }
   })();
 }
