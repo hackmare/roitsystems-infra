@@ -106,7 +106,7 @@ export const imageJobsRoutes: FastifyPluginAsync = async (server) => {
     }
   });
 
-  server.get('/image-jobs/:transaction_id', adminRateLimit, async (request, reply) => {
+  server.get('/image-jobs/:transaction_id', async (request, reply) => {
     if (!requireAuth(request, reply)) return;
 
     const { transaction_id } = request.params as { transaction_id: string };
