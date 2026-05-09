@@ -27,6 +27,13 @@
     # and can cause issues in some configurations. CSP provides better XSS protection.
   }
 
+  # corporate-network dashboard (root)
+  @network-root path /corporate-network /corporate-network/
+  handle @network-root {
+    uri strip_prefix /corporate-network
+    reverse_proxy contact-inbox-api:3000
+  }
+
   # corporate-network contact routes
   @contact path /corporate-network/contact /corporate-network/contact/*
   handle @contact {

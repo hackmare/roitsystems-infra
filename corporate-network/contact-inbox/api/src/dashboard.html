@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>RO IT Systems — Corporate Network Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #0f172a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .container { max-width: 900px; width: 100%; }
+    .header {
+      background: white;
+      padding: 2rem;
+      border-radius: 1rem 1rem 0 0;
+      border-bottom: 2px solid #e2e8f0;
+    }
+    .header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: #0f172a;
+    }
+    .header p {
+      font-size: 0.95rem;
+      color: #64748b;
+      line-height: 1.6;
+    }
+    .content {
+      background: white;
+      padding: 2rem;
+    }
+    .section-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #64748b;
+      margin-bottom: 1rem;
+      margin-top: 1.5rem;
+    }
+    .section-title:first-child { margin-top: 0; }
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .card {
+      border: 1px solid #e2e8f0;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .card:hover {
+      border-color: #667eea;
+      box-shadow: 0 4px 24px rgba(102, 126, 234, 0.15);
+      transform: translateY(-2px);
+    }
+    .card-icon {
+      font-size: 2rem;
+      margin-bottom: 0.75rem;
+    }
+    .card h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #0f172a;
+      margin-bottom: 0.5rem;
+    }
+    .card p {
+      font-size: 0.9rem;
+      color: #64748b;
+      line-height: 1.6;
+      margin-bottom: 1rem;
+    }
+    .card-link {
+      display: inline-block;
+      color: #667eea;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+    .card-link:hover {
+      color: #764ba2;
+    }
+    .footer {
+      background: white;
+      padding: 2rem;
+      border-top: 1px solid #e2e8f0;
+      border-radius: 0 0 1rem 1rem;
+      text-align: center;
+      font-size: 0.85rem;
+      color: #64748b;
+    }
+    .footer a {
+      color: #667eea;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .footer a:hover {
+      color: #764ba2;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>🔵 RO IT Systems Corporate Network</h1>
+    <p>Access your tools and services. Each application below helps you manage different aspects of our operations.</p>
+  </div>
+
+  <div class="content">
+    <div class="section-title">Available Services</div>
+
+    <div class="cards-grid">
+      <div class="card">
+        <div class="card-icon">📮</div>
+        <h3>Contact Form</h3>
+        <p>Submit inquiries and messages through our contact form. Your message will be securely stored and processed.</p>
+        <a href="./contact" class="card-link">Open Contact Form →</a>
+      </div>
+
+      <div class="card">
+        <div class="card-icon">📋</div>
+        <h3>Contact Manager</h3>
+        <p>View and manage all submitted contact messages. Access requires admin authentication.</p>
+        <a href="./contact/admin" class="card-link">View Messages →</a>
+      </div>
+
+      <div class="card">
+        <div class="card-icon">🖼️</div>
+        <h3>Image Converter</h3>
+        <p>Convert images between formats (PNG, JPG, WebP, SVG, TIFF). Resize, rotate, adjust quality, and apply effects. Admin access required.</p>
+        <a href="./image-converter/convert" class="card-link">Convert Images →</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>Need help? <a href="https://github.com/hackmare/roitsystems-infra/blob/main/README.md" target="_blank">View documentation on GitHub</a></p>
+  </div>
+</div>
+
+</body>
+</html>

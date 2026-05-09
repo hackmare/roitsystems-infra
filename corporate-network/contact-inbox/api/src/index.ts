@@ -1,6 +1,8 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { contactRoutes } from './routes/contact';
 import { adminRoutes, ADMIN_HTML } from './routes/admin';
 import { connectNats, closeNats } from './services/nats';
@@ -30,8 +32,19 @@ async function bootstrap() {
     global: false, // only apply where explicitly added
   });
 
+  // Load dashboard HTML
+  let dashboardHtml = '';
+  try {
+    dashboardHtml = readFileSync(resolve(__dirname, 'dashboard.html'), 'utf-8');
+  } catch (err) {
+    server.log.warn('dashboard.html not found');
+  }
+
   // Health check — not rate-limited, not CORS-gated
   server.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }));
+
+  // Corporate Network Dashboard
+  server.get('/', async (_request, reply) => reply.type('text/html').send(dashboardHtml));
 
   // Admin SPA — served at /admin, auth handled client-side
   server.get('/admin', async (_request, reply) => reply.type('text/html').send(ADMIN_HTML));
