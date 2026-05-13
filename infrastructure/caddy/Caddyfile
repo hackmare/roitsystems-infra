@@ -33,6 +33,12 @@
     reverse_proxy contact-inbox-api:3000
   }
 
+  # admin API endpoint (for corporate network contact management)
+  @admin-api path /api/admin /api/admin/*
+  handle @admin-api {
+    reverse_proxy contact-inbox-api:3000
+  }
+
   # corporate-network dashboard (root)
   @network-root path /corporate-network /corporate-network/
   handle @network-root {
