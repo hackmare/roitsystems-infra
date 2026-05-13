@@ -33,6 +33,8 @@ docker compose up -d --build
 |----------|-------------|
 | `API_DOMAIN` | Public hostname, e.g. `api.roitsystems.ca` |
 | `CADDY_EMAIL` | Email for Let's Encrypt TLS cert |
+| `CORPORATE_NETWORK_AUTH_USER` | Username for the `/corporate-network` HTTP Basic auth gate |
+| `CORPORATE_NETWORK_AUTH_HASH` | Caddy hashed password for the `/corporate-network` HTTP Basic auth gate |
 | `COUCHDB_USER` | CouchDB admin username |
 | `COUCHDB_PASSWORD` | CouchDB admin password (make it strong) |
 | `CORS_ORIGINS` | Comma-separated allowed origins, e.g. `https://roitsystems.ca` |
@@ -132,6 +134,14 @@ Poll `GET /api/admin/image-jobs/:transaction_id` with the `transaction_id` above
 ```
 
 ## Admin access
+
+All `/corporate-network` pages and tools are protected by Caddy HTTP Basic auth before the application UIs load. Generate the password hash with:
+
+```bash
+docker run --rm caddy:2 caddy hash-password --plaintext 'your-strong-password'
+```
+
+Set `CORPORATE_NETWORK_AUTH_USER` and `CORPORATE_NETWORK_AUTH_HASH` in `.env`, then deploy/reload Caddy.
 
 ### Message Viewer
 Open `https://api.roitsystems.ca/admin` in your browser and enter the `ADMIN_TOKEN`. View all contact messages, their status, and AI-generated insights.

@@ -166,7 +166,7 @@ async function loadMessages() {
   document.getElementById('appView').style.display = '';
   document.getElementById('messageList').innerHTML = '<div class="loading">Loading…</div>';
   try {
-    const data = await api('/api/admin/messages');
+    const data = await api('./api/admin/messages');
     const msgs = data.messages;
     if (!msgs.length) {
       document.getElementById('messageList').innerHTML = '<div class="empty">No messages yet.</div>';
@@ -197,7 +197,7 @@ async function showDetail(id) {
   document.getElementById('detailContent').innerHTML = '<div class="loading">Loading…</div>';
   document.getElementById('detailOverlay').classList.add('open');
   try {
-    const m = await api('/api/admin/messages/' + id);
+    const m = await api('./api/admin/messages/' + id);
     const fields = [
       ['Name', m.name], ['Email', m.email], ['Organisation', m.company],
       ['Subject', m.subject], ['Budget', m.budget], ['Timeline', m.timeline],

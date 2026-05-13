@@ -17,6 +17,8 @@ services:
     environment:
       API_DOMAIN: ${API_DOMAIN}
       CADDY_EMAIL: ${CADDY_EMAIL}
+      CORPORATE_NETWORK_AUTH_USER: ${CORPORATE_NETWORK_AUTH_USER}
+      CORPORATE_NETWORK_AUTH_HASH: ${CORPORATE_NETWORK_AUTH_HASH}
     networks:
       - corporate-backend
     depends_on:
