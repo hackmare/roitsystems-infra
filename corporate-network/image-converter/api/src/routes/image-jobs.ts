@@ -1,35 +1,11 @@
-import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
-import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
+import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import {
   createImageJob,
   publishImageConvertJob,
   getImageJob,
 } from '../services/image-jobs';
-
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
-const HMAC_KEY = randomBytes(32);
-
-function hmac(value: string): Buffer {
-  return createHmac('sha256', HMAC_KEY).update(value).digest();
-}
-
-function requireAuth(request: FastifyRequest, reply: FastifyReply): boolean {
-  const auth = request.headers.authorization;
-  const provided = auth?.startsWith('Bearer ') ? auth.slice(7) : '';
-
-  if (!ADMIN_TOKEN) {
-    reply.status(503).send({ error: 'Admin access not configured' });
-    return false;
-  }
-
-  const match = timingSafeEqual(hmac(provided), hmac(ADMIN_TOKEN));
-  if (!match) {
-    reply.status(401).send({ error: 'Unauthorized' });
-    return false;
-  }
-  return true;
-}
+import { requireGoogleAuth } from '../auth';
 
 const submitJobSchema = z.object({
   filename: z.string().min(1).max(255),
@@ -63,7 +39,7 @@ const adminRateLimit = {
 
 export const imageJobsRoutes: FastifyPluginAsync = async (server) => {
   server.post('/image-jobs', adminRateLimit, async (request, reply) => {
-    if (!requireAuth(request, reply)) return;
+    if (!requireGoogleAuth(request, reply)) return;
 
     const result = submitJobSchema.safeParse(request.body);
     if (!result.success) {
@@ -109,7 +85,7 @@ export const imageJobsRoutes: FastifyPluginAsync = async (server) => {
   });
 
   server.get('/image-jobs/:transaction_id', async (request, reply) => {
-    if (!requireAuth(request, reply)) return;
+    if (!requireGoogleAuth(request, reply)) return;
 
     const { transaction_id } = request.params as { transaction_id: string };
 

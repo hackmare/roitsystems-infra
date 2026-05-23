@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import cookie from '@fastify/cookie';
 import { imageJobsRoutes } from './routes/image-jobs';
 import { connectNats, closeNats, getImageReadyConsumer, sc } from './services/nats';
 import { ensureDatabases, updateImageJobStatus } from './services/image-jobs';
@@ -21,6 +22,8 @@ const server = Fastify({
 
 async function bootstrap() {
   const corsOrigins = (process.env.CORS_ORIGINS || 'https://roitsystems.ca').split(',').map((o) => o.trim());
+
+  await server.register(cookie);
 
   await server.register(cors, {
     origin: corsOrigins,

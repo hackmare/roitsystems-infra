@@ -39,10 +39,10 @@
     reverse_proxy contact-inbox-api:3000
   }
 
-  # Require authentication before exposing any corporate-network UI or tool.
-  @corporate-network path /corporate-network /corporate-network/*
-  basic_auth @corporate-network {
-    {$CORPORATE_NETWORK_AUTH_USER} {$CORPORATE_NETWORK_AUTH_HASH}
+  # OAuth flow (Google authentication)
+  @auth path /auth /auth/*
+  handle @auth {
+    reverse_proxy contact-inbox-api:3000
   }
 
   # corporate-network dashboard (root)

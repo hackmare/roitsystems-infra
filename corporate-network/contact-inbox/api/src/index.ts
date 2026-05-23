@@ -1,10 +1,12 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import cookie from '@fastify/cookie';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { contactRoutes } from './routes/contact';
 import { adminRoutes, ADMIN_HTML } from './routes/admin';
+import { authRoutes } from './routes/auth';
 import { connectNats, closeNats } from './services/nats';
 import { ensureDatabases } from './services/couchdb';
 
@@ -22,6 +24,8 @@ const server = Fastify({
 
 async function bootstrap() {
   const corsOrigins = (process.env.CORS_ORIGINS || 'https://roitsystems.ca').split(',').map((o) => o.trim());
+
+  await server.register(cookie);
 
   await server.register(cors, {
     origin: corsOrigins,
@@ -46,10 +50,13 @@ async function bootstrap() {
   // Corporate Network Dashboard
   server.get('/', async (_request, reply) => reply.type('text/html').send(dashboardHtml));
 
-  // Admin SPA — served at /admin, auth handled client-side
+  // OAuth flow
+  await server.register(authRoutes, { prefix: '/auth' });
+
+  // Admin SPA — served at /admin, auth checked by API routes
   server.get('/admin', async (_request, reply) => reply.type('text/html').send(ADMIN_HTML));
 
-  // Admin SPA and API (rate-limited per IP for POST; no limit on GET admin UI)
+  // Admin API (requires Google auth via session cookie)
   await server.register(adminRoutes, { prefix: '/api/admin' });
 
   // Public contact form endpoint — rate-limited

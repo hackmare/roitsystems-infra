@@ -17,7 +17,8 @@ services:
       COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
       NATS_URL: nats://nats:4222
       CORS_ORIGINS: ${CORS_ORIGINS}
-      ADMIN_TOKEN: ${ADMIN_TOKEN}
+      ADMIN_EMAILS: ${ADMIN_EMAILS}
+      SESSION_SECRET: ${SESSION_SECRET}
     networks:
       - corporate-backend
     restart: unless-stopped
