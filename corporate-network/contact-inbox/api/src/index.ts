@@ -6,7 +6,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { contactRoutes } from './routes/contact';
 import { adminRoutes, ADMIN_HTML } from './routes/admin';
-import { authRoutes } from './routes/auth';
+import { authRoutes, requireGoogleAuth } from './routes/auth';
 import { connectNats, closeNats } from './services/nats';
 import { ensureDatabases } from './services/couchdb';
 
@@ -47,8 +47,11 @@ async function bootstrap() {
   // Health check — not rate-limited, not CORS-gated
   server.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }));
 
-  // Corporate Network Dashboard
-  server.get('/', async (_request, reply) => reply.type('text/html').send(dashboardHtml));
+  // Corporate Network Dashboard — requires OAuth
+  server.get('/', async (request, reply) => {
+    if (!requireGoogleAuth(request, reply)) return;
+    return reply.type('text/html').send(dashboardHtml);
+  });
 
   // OAuth flow
   await server.register(authRoutes, { prefix: '/auth' });
