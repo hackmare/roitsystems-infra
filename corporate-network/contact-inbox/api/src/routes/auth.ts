@@ -52,13 +52,14 @@ function isValidRedirect(path: string): boolean {
 export function requireGoogleAuth(request: FastifyRequest, reply: FastifyReply): SessionPayload | null {
   const sessionCookie = request.cookies.session;
   if (!sessionCookie) {
-    reply.status(401).send({ error: 'Unauthorized' });
+    const next = encodeURIComponent(request.url);
+    reply.redirect(`/auth/login?next=${next}`);
     return null;
   }
 
   const payload = verifySessionPayload(sessionCookie);
   if (!payload || !ADMIN_EMAILS.includes(payload.email)) {
-    reply.status(401).send({ error: 'Unauthorized' });
+    reply.status(403).send({ error: 'Access denied' });
     return null;
   }
 
