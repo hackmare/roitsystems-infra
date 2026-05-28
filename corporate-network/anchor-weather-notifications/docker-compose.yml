@@ -1,0 +1,18 @@
+version: '3.8'
+
+networks:
+  corporate-backend:
+    external: true
+
+services:
+  anchor-weather-notifications:
+    build: .
+    container_name: anchor-weather-notifications
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      NATS_URL: nats://nats:4222
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      NOTIFICATION_FROM_EMAIL: ${NOTIFICATION_FROM_EMAIL:-anchor@roitsystems.ca}
+    networks:
+      - corporate-backend
+    restart: unless-stopped

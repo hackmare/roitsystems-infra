@@ -1,0 +1,14 @@
+{
+  "name": "anchor-weather-notifications",
+  "version": "1.0.0",
+  "description": "NATS consumer for Anchor Weather user notifications — sends email via Resend",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "nats": "^2.28.2",
+    "resend": "^4.0.0"
+  }
+}
