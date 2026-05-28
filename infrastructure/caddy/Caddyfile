@@ -2,6 +2,18 @@
   email {$CADDY_EMAIL}
 }
 
+{$ANCHOR_DOMAIN} {
+  header {
+    Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    X-Content-Type-Options nosniff
+    X-Frame-Options DENY
+    Referrer-Policy strict-origin-when-cross-origin
+    -Server
+  }
+  # nginx inside the frontend container handles static files and /api/ → backend
+  reverse_proxy anchor-weather-frontend:80
+}
+
 {$API_DOMAIN} {
   # Security headers applied to all responses from this domain.
   header {

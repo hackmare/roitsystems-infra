@@ -16,6 +16,7 @@ services:
       - caddy-data:/data
     environment:
       API_DOMAIN: ${API_DOMAIN}
+      ANCHOR_DOMAIN: ${ANCHOR_DOMAIN}
       CADDY_EMAIL: ${CADDY_EMAIL}
     networks:
       - corporate-backend
