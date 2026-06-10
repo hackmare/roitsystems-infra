@@ -8,6 +8,7 @@ networks:
 services:
   caddy:
     image: caddy:2
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
@@ -26,6 +27,7 @@ services:
 
   nats:
     image: nats:2
+    restart: unless-stopped
     command: ["-c", "/etc/nats/nats.conf"]
     volumes:
       - ./nats/nats.conf:/etc/nats/nats.conf
@@ -35,6 +37,7 @@ services:
 
   couchdb:
     image: couchdb:3
+    restart: unless-stopped
     environment:
       COUCHDB_USER: ${COUCHDB_USER}
       COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
