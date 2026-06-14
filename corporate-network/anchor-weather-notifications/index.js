@@ -19,18 +19,22 @@ function log(level, message, data = {}) {
 }
 
 async function sendEmail(payload) {
-  const { to_email, to_name, subject, body_html } = payload;
+  const { to_email, to_name, subject, body_html, cc_email } = payload;
   if (!to_email || !subject || !body_html) {
     log('warn', 'Skipping message with missing fields', { payload });
     return;
   }
   const to = to_name ? `${to_name} <${to_email}>` : to_email;
-  const { error } = await resend.emails.send({
+  const params = {
     from: `Anchor Weather <${FROM_EMAIL}>`,
     to,
     subject,
     html: body_html,
-  });
+  };
+  if (cc_email) {
+    params.cc = cc_email;
+  }
+  const { error } = await resend.emails.send(params);
   if (error) {
     throw new Error(`Resend error: ${JSON.stringify(error)}`);
   }
