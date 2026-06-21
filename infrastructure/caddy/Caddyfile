@@ -2,7 +2,7 @@
   email {$CADDY_EMAIL}
 }
 
-{$ANCHOR_DOMAIN} {
+{$ANCHOR_DOMAIN}, vector-weather.selkietech.ca, weather-vector.selkietech.ca {
   header {
     Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
     X-Content-Type-Options nosniff
@@ -11,6 +11,8 @@
     -Server
   }
   # nginx inside the frontend container handles static files and /api/ → backend
+  # vector-weather/weather-vector temporarily share the anchor-weather app
+  # until the commercial app is built — see DEPLOY.md
   reverse_proxy anchor-weather-frontend:80
 }
 
