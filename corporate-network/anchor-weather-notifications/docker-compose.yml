@@ -12,7 +12,8 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       NATS_URL: nats://nats:4222
       RESEND_API_KEY: ${RESEND_API_KEY}
-      NOTIFICATION_FROM_EMAIL: ${NOTIFICATION_FROM_EMAIL:-anchor@roitsystems.ca}
+      NOTIFICATION_FROM_EMAIL: ${NOTIFICATION_FROM_EMAIL:-info@selkietech.ca}
+      NOTIFICATION_FROM_NAME: ${NOTIFICATION_FROM_NAME:-Vector Weather}
     networks:
       - corporate-backend
     restart: unless-stopped
