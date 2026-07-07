@@ -3,7 +3,8 @@ import { Resend } from 'resend';
 
 const NATS_URL = process.env.NATS_URL || 'nats://nats:4222';
 const SUBJECT = 'anchor.weather.user.comms';
-const FROM_EMAIL = process.env.NOTIFICATION_FROM_EMAIL || 'anchor@roitsystems.ca';
+const FROM_EMAIL = process.env.NOTIFICATION_FROM_EMAIL || 'info@selkietech.ca';
+const FROM_NAME = process.env.NOTIFICATION_FROM_NAME || 'Vector Weather';
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
 if (!RESEND_API_KEY) {
@@ -26,7 +27,7 @@ async function sendEmail(payload) {
   }
   const to = to_name ? `${to_name} <${to_email}>` : to_email;
   const params = {
-    from: `Anchor Weather <${FROM_EMAIL}>`,
+    from: `${FROM_NAME} <${FROM_EMAIL}>`,
     to,
     subject,
     html: body_html,
