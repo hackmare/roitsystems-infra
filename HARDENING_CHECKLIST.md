@@ -15,13 +15,14 @@ Items marked ⚠️ are known risks with documented mitigations or upgrade paths
 ## Network and Infrastructure
 
 - ✅ Only Caddy binds to host ports (80, 443)
-- ✅ CouchDB and NATS have no host-bound ports — unreachable from the Internet
+- ✅ CouchDB has no host-bound ports — unreachable from the Internet
+- ✅ NATS is bound to `127.0.0.1:4222` only (for on-host daemons that can't join the Docker network) — unreachable from the Internet or any other host
 - ✅ Docker networks: `proxy` (Caddy↔API) and `backend` (all internal services) are separated
 - 🔲 Firewall: only ports 22, 80, 443 open on the droplet/host
 - 🔲 SSH: key-only authentication, root login disabled
 - 🔲 Automatic OS security updates enabled
 - 🔲 Confirm CouchDB port 5984 not accessible from outside Docker (`curl http://HOST:5984` should fail)
-- 🔲 Confirm NATS port 4222 not accessible from outside Docker
+- 🔲 Confirm NATS port 4222 is bound to 127.0.0.1 only (`curl http://HOST:4222` from another machine should fail; `curl http://127.0.0.1:4222` on the droplet itself should succeed)
 
 ## TLS / HTTPS
 
