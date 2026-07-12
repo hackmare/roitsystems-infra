@@ -14,7 +14,11 @@ This stack accepts public contact form submissions and stores them privately. Th
 ### Network
 
 - Only Caddy binds to host ports (80, 443).
-- CouchDB and NATS have **no host-bound ports** — unreachable from the Internet.
+- CouchDB has **no host-bound ports** — unreachable from the Internet.
+- NATS is bound to `127.0.0.1:4222` only (for anchor-weather's
+  `container-control` daemon, which runs on the host and can't join the
+  `backend` Docker network) — still unreachable from the Internet or any
+  other host, just no longer Docker-network-only.
 - The `proxy` Docker network connects Caddy↔API only.
 - The `backend` Docker network connects all internal services.
 
@@ -54,7 +58,8 @@ This stack accepts public contact form submissions and stores them privately. Th
 
 ### NATS
 
-- No authentication configured (internal network only, no public exposure).
+- No authentication configured (loopback + internal Docker network only, no
+  public exposure).
 - If the attack surface grows, add NATS `authorization {}` block to `nats.conf`.
 
 ## Hardening Checklist (Pre-Production)
@@ -66,6 +71,6 @@ This stack accepts public contact form submissions and stores them privately. Th
 - [ ] SSH: key-only authentication, root login disabled
 - [ ] Automatic OS security updates enabled
 - [ ] CouchDB port 5984 confirmed not accessible from host (`curl localhost:5984` should fail from outside Docker)
-- [ ] NATS port 4222 confirmed not accessible from host
+- [ ] NATS port 4222 confirmed bound to `127.0.0.1` only (`curl` from another machine should fail; `curl 127.0.0.1:4222` on the droplet itself should succeed)
 - [ ] `LOG_LEVEL` set to `info` (not `debug`) in production
 - [ ] Backup schedule in place (see operations.md)

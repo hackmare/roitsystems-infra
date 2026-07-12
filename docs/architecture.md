@@ -32,7 +32,12 @@ backend network only (not reachable from Internet)
 | `proxy`   | Caddy, API           | Yes (via host)  |
 | `backend` | API, Worker, CouchDB, NATS | Yes (outbound only, no bound ports) |
 
-CouchDB and NATS have **no ports bound to the host**. They are only reachable by services on the `backend` Docker network.
+CouchDB has **no ports bound to the host** — only reachable by services on
+the `backend` Docker network. NATS is additionally bound to `127.0.0.1:4222`
+on the host (for anchor-weather's `container-control` daemon, a separate
+app's on-host process that can't join this Docker network) — still
+unreachable from the Internet, just no longer Docker-network-only. See
+`infrastructure/docker-compose.yml` and `infrastructure/nats/nats.conf`.
 
 ## Data Flow — Contact Form Submission
 
