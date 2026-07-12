@@ -34,6 +34,14 @@ services:
       - nats-data:/data
     networks:
       - corporate-backend
+    ports:
+      # Loopback-only: reachable from processes running directly on THIS
+      # host (e.g. anchor-weather's container-control daemon, which can't
+      # join corporate-backend since it isn't a container), never from
+      # outside Docker's usual containers-only boundary AND never from off-
+      # host -- "127.0.0.1:" binds only that interface, not 0.0.0.0. Public
+      # exposure is unchanged (still none).
+      - "127.0.0.1:4222:4222"
 
   couchdb:
     image: couchdb:3
