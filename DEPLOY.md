@@ -27,31 +27,54 @@ Edit `.env` and set:
 
 **⚠️ Security**: Never commit `.env` to version control. It's in `.gitignore`.
 
-### 2. Deploy Locally (for testing)
+### 2. Deploy
 
 ```bash
-./deploy.sh
+./deploy.sh [--dry-run] [--allow-caddy-restart] [target ...]
 ```
 
-This will:
-1. Validate `.env` exists
-2. Kill and clean old containers
-3. Start infrastructure (Caddy, NATS, CouchDB)
-4. Wait 15 seconds for CouchDB to initialize
-5. Start contact-inbox app
-6. Start image-converter app
+Targets are `infrastructure`, `contact-inbox`, `image-converter`; no target
+deploys all three. The script:
+
+1. Refuses to run under docker-compose v1 (broken on the prod host — its
+   recreate path dies with `KeyError: 'ContainerConfig'` and leaves the
+   service down), over local edits to tracked files, or alongside another
+   running deploy (lock file).
+2. Fast-forwards the checkout to `origin/main`.
+3. **Converges** each target with `docker compose up -d` — only containers
+   whose image or config changed are recreated; nothing is `down`ed, no
+   volume is ever removed, and nothing is pruned.
+4. Applies Caddyfile changes with a zero-downtime `caddy reload`. It will
+   **not** recreate the Caddy container itself unless you pass
+   `--allow-caddy-restart`, because Caddy also fronts the anchor-weather
+   production domains that share this host (see below).
+5. Verifies: the anchor-weather containers are byte-for-byte the same set
+   before and after, NATS answers on `127.0.0.1:4222`, and the public
+   health endpoint responds.
+
+Use `--dry-run` first to see exactly which containers a deploy would
+recreate, without changing anything.
+
+**⚠️ Shared host**: this stack shares the production droplet with
+anchor-weather, and `infrastructure/`'s Caddy terminates TLS for
+anchor-weather's public domains too. Never deploy with `docker compose
+down`, `-v`, or `docker system prune` by hand — `down -v` destroys the
+CouchDB/NATS-JetStream/TLS-certificate volumes, and a prune can delete
+images from under a concurrently running anchor-weather deploy.
 
 ### 3. Verify Deployment
+
+The script verifies automatically (step 5 above). To check by hand:
 
 ```bash
 # Check all containers are running
 docker ps
 
 # Test the health endpoint
-curl http://localhost/health
+curl https://pubapi.roitsystems.ca/health
 
 # Check logs (example)
-docker logs infrastructure_caddy_1
+docker logs infrastructure-caddy-1
 docker logs contact-inbox-api
 ```
 
@@ -60,19 +83,15 @@ docker logs contact-inbox-api
 On the target machine (e.g., production droplet):
 
 ```bash
-# SSH into the server
-ssh root@pubapi.roitsystems.ca
+# SSH into the server. Note: the public hostnames are Cloudflare-proxied
+# and do not accept SSH — connect to the droplet's direct IP (kept in the
+# private ops notes, not in this public repo).
+ssh root@<droplet-ip>
 
-# Clone or update the repository
 cd /root/roitsystems-infra
-git pull origin main
 
-# Copy .env (already there from previous setup) or create new one
-# Ensure all variables are set:
-# - For HTTPS: API_DOMAIN and CADDY_EMAIL must be configured
-# - For services: CLAUDE_API_KEY, RESEND_API_KEY, etc.
-
-# Deploy
+# Preview, then deploy (the script does its own git pull)
+./deploy.sh --dry-run
 ./deploy.sh
 ```
 
