@@ -29,6 +29,21 @@ services:
     image: nats:2
     restart: unless-stopped
     command: ["-c", "/etc/nats/nats.conf"]
+    # nats.conf holds no secrets: each user's password is an environment
+    # reference resolved here at startup. An unset variable makes the server
+    # refuse to start, so a missing credential can never degrade to open access.
+    environment:
+      NATS_PASS_AW_BACKEND: ${NATS_PASS_AW_BACKEND}
+      NATS_PASS_AW_LLM: ${NATS_PASS_AW_LLM}
+      NATS_PASS_AW_CONTROL: ${NATS_PASS_AW_CONTROL}
+      NATS_PASS_AW_NOTIFY: ${NATS_PASS_AW_NOTIFY}
+      NATS_PASS_CONTACT_API: ${NATS_PASS_CONTACT_API}
+      NATS_PASS_CONTACT_WORKER: ${NATS_PASS_CONTACT_WORKER}
+      NATS_PASS_CONTACT_NOTIFY: ${NATS_PASS_CONTACT_NOTIFY}
+      NATS_PASS_IMAGE_API: ${NATS_PASS_IMAGE_API}
+      NATS_PASS_IMAGE_MAGICK: ${NATS_PASS_IMAGE_MAGICK}
+      # MIGRATION ONLY — remove with the no_auth_user line in nats.conf.
+      NATS_PASS_LEGACY_OPEN: ${NATS_PASS_LEGACY_OPEN}
     volumes:
       - ./nats/nats.conf:/etc/nats/nats.conf
       - nats-data:/data

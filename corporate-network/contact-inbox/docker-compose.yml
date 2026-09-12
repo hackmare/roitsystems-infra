@@ -16,7 +16,7 @@ services:
       COUCHDB_URL: http://couchdb:5984
       COUCHDB_USER: ${COUCHDB_USER}
       COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
-      NATS_URL: nats://nats:4222
+      NATS_URL: nats://contact-api:${NATS_PASS_CONTACT_API}@nats:4222
       CORS_ORIGINS: ${CORS_ORIGINS}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
@@ -37,7 +37,7 @@ services:
       COUCHDB_URL: http://couchdb:5984
       COUCHDB_USER: ${COUCHDB_USER}
       COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
-      NATS_URL: nats://nats:4222
+      NATS_URL: nats://contact-worker:${NATS_PASS_CONTACT_WORKER}@nats:4222
       CLAUDE_API_KEY: ${CLAUDE_API_KEY}
     networks:
       - corporate-backend
@@ -49,7 +49,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      NATS_URL: nats://nats:4222
+      NATS_URL: nats://contact-notify:${NATS_PASS_CONTACT_NOTIFY}@nats:4222
       COUCHDB_URL: http://couchdb:5984
       COUCHDB_USER: ${COUCHDB_USER}
       COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
