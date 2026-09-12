@@ -10,7 +10,7 @@ services:
     container_name: anchor-weather-notifications
     environment:
       NODE_ENV: ${NODE_ENV:-production}
-      NATS_URL: nats://nats:4222
+      NATS_URL: nats://aw-notify:${NATS_PASS_AW_NOTIFY}@nats:4222
       RESEND_API_KEY: ${RESEND_API_KEY}
       NOTIFICATION_FROM_EMAIL: ${NOTIFICATION_FROM_EMAIL:-info@selkietech.ca}
       NOTIFICATION_FROM_NAME: ${NOTIFICATION_FROM_NAME:-Vector Weather}
