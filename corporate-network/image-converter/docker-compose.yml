@@ -15,7 +15,7 @@ services:
       COUCHDB_URL: http://couchdb:5984
       COUCHDB_USER: ${COUCHDB_USER}
       COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
-      NATS_URL: nats://nats:4222
+      NATS_URL: nats://image-api:${NATS_PASS_IMAGE_API}@nats:4222
       CORS_ORIGINS: ${CORS_ORIGINS}
       ADMIN_EMAILS: ${ADMIN_EMAILS}
       SESSION_SECRET: ${SESSION_SECRET}
@@ -29,7 +29,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      NATS_URL: nats://nats:4222
+      NATS_URL: nats://image-magick:${NATS_PASS_IMAGE_MAGICK}@nats:4222
       COUCHDB_URL: http://couchdb:5984
       COUCHDB_USER: ${COUCHDB_USER}
       COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
