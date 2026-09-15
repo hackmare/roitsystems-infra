@@ -476,8 +476,16 @@ async function main() {
 
   try {
     // Connect to NATS
+    // NATS credentials are passed as separate options, NOT embedded in the servers
+    // URL: nats.js throws "TypeError: Invalid URL" on `nats://user:pass@host:4222`
+    // (nats-py accepts that form, which is why the Python services differ). With
+    // NATS_USER unset the connection stays unauthenticated, which is what the
+    // server's no_auth_user shim expects mid-rollout.
     const nc = await connect({
       servers: NATS_URL,
+      ...(process.env.NATS_USER
+        ? { user: process.env.NATS_USER, pass: process.env.NATS_PASS }
+        : {}),
     });
 
     log('info', 'Connected to NATS', { servers: NATS_URL });

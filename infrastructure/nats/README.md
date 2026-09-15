@@ -24,9 +24,20 @@ they own**, so no client can create, modify or drain another service's stream.
 ## Credentials
 
 `nats.conf` contains no secrets. Each password is an environment reference
-resolved by the server at startup, supplied from `infrastructure/.env`. The
-same value goes in the client's own `NATS_URL`
-(`nats://<user>:<password>@nats:4222`).
+resolved by the server at startup, supplied from `infrastructure/.env`.
+
+How a client presents that password **depends on its library**:
+
+| Library | Used by | Form |
+| --- | --- | --- |
+| nats-py | anchor-weather backend/worker/scheduler, llm-service, container-control | credentials in the URL: `NATS_URL=nats://<user>:<pass>@nats:4222` |
+| nats.js | contact-inbox (×3), image-converter (×2), anchor-weather-notifications | **separate options**: `NATS_URL=nats://nats:4222` plus `NATS_USER` / `NATS_PASS` |
+
+nats.js cannot parse credentials embedded in the servers URL — it throws
+`TypeError: Invalid URL` on `nats://user:pass@host:4222` — so those services
+take `NATS_USER` and `NATS_PASS` as their own environment variables and pass
+them to `connect()` as options. With `NATS_USER` unset they connect
+unauthenticated, which is what the `no_auth_user` shim expects mid-rollout.
 
 Generate:
 
