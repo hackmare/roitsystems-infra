@@ -1,0 +1,79 @@
+# Dependabot configuration.
+#
+# The reason this file exists: on the defaults, Dependabot bumped `fastify`
+# on its own and left `@fastify/cookie` / `cors` / `rate-limit` at their old
+# majors. Fastify plugins declare a peer major and refuse to load against the
+# wrong one, so the result is a server that installs cleanly and then dies at
+# startup with
+#
+#     fastify-plugin: @fastify/cookie - expected '4.x' fastify version,
+#     '5.12.4' is installed
+#
+# and it only surfaces on the next image rebuild, which can be weeks after the
+# merge. That happened twice (#7, #16/#19).
+#
+# The `fastify` group below makes the server and its plugins move as one unit,
+# so a major bump either resolves consistently or fails visibly in one PR
+# instead of splitting across two and breaking later.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/corporate-network/contact-inbox/api"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Keep fastify and its plugins together -- see the note above.
+      fastify:
+        patterns:
+          - "fastify"
+          - "@fastify/*"
+
+  - package-ecosystem: npm
+    directory: "/corporate-network/contact-inbox/worker"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Keep fastify and its plugins together -- see the note above.
+      fastify:
+        patterns:
+          - "fastify"
+          - "@fastify/*"
+
+  - package-ecosystem: npm
+    directory: "/corporate-network/contact-inbox/notification-service"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Keep fastify and its plugins together -- see the note above.
+      fastify:
+        patterns:
+          - "fastify"
+          - "@fastify/*"
+
+  - package-ecosystem: npm
+    directory: "/corporate-network/image-converter/api"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Keep fastify and its plugins together -- see the note above.
+      fastify:
+        patterns:
+          - "fastify"
+          - "@fastify/*"
+
+  - package-ecosystem: npm
+    directory: "/corporate-network/image-converter/imagemagick-service"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Keep fastify and its plugins together -- see the note above.
+      fastify:
+        patterns:
+          - "fastify"
+          - "@fastify/*"
