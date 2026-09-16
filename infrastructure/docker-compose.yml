@@ -42,8 +42,6 @@ services:
       NATS_PASS_CONTACT_NOTIFY: ${NATS_PASS_CONTACT_NOTIFY}
       NATS_PASS_IMAGE_API: ${NATS_PASS_IMAGE_API}
       NATS_PASS_IMAGE_MAGICK: ${NATS_PASS_IMAGE_MAGICK}
-      # MIGRATION ONLY — remove with the no_auth_user line in nats.conf.
-      NATS_PASS_LEGACY_OPEN: ${NATS_PASS_LEGACY_OPEN}
     volumes:
       - ./nats/nats.conf:/etc/nats/nats.conf
       - nats-data:/data

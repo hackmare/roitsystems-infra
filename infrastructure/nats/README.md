@@ -55,72 +55,25 @@ each client project's `.env` (its own one only). Rotating a credential is an
 If a referenced variable is unset the server **refuses to start**, so a missing
 credential fails loudly instead of quietly running without authentication.
 
-## Rolling this out without an outage
+## Rollout (completed 2026-09-16)
 
-Every client shares one bus, so a single cutover would need every service
-restarted in lockstep. `no_auth_user` avoids that: while it is set, a client
-that connects *without* credentials is accepted and mapped to `legacy-open`,
-which has full permissions. That lets services move across one at a time.
+Every client now authenticates. The `no_auth_user` shim that allowed
+credential-less connections during the migration has been removed, so a
+process that reaches the port without credentials is refused.
 
-**Until step 3 is done, this config does not restrict anything.** Step 3 is the
-step that closes the door.
+The cutover was done one service at a time behind that shim, which is worth
+knowing if this is ever repeated: while `no_auth_user` is set, clients
+connecting *without* credentials are accepted and mapped to a named user, so
+services move across individually instead of in lockstep. Two things caught us
+out and are worth writing down:
 
-### 1. Deploy the config with the shim in place
-
-Put all `NATS_PASS_*` values in `infrastructure/.env`, then recreate the server
-so it picks up the new environment (a reload alone will not add new env vars):
-
-```bash
-cd infrastructure
-docker compose up -d --no-deps nats
-docker compose logs --tail 20 nats      # expect no config errors
-```
-
-Nothing has changed for existing clients — they are still unauthenticated, now
-mapped to `legacy-open`.
-
-### 2. Move clients across, one at a time
-
-For each project, add its `NATS_PASS_*` to that project's `.env`, then recreate
-just that service. After each one, confirm it reconnected as its own user and
-that its traffic still flows:
-
-```bash
-docker compose up -d --no-deps <service>
-
-# Who is connected as what:
-docker exec <any-container-on-corporate-backend> \
-  curl -s 'http://nats:8222/connz?auth=1' |
-  python3 -c 'import json,sys; [print(c["authorized_user"]) for c in json.load(sys.stdin)["connections"]]' |
-  sort | uniq -c
-```
-
-anchor-weather's services take their `NATS_URL` from that project's own `.env`
-and need no code change. The `container-control` daemon is a host systemd unit,
-not a container — update its `NATS_URL` in the unit environment and
-`systemctl restart container-control`.
-
-A service that fails to authenticate will log a connection error and keep
-retrying; put its old `NATS_URL` back and it recovers.
-
-### 3. Close the door
-
-Once no connection reports `legacy-open`:
-
-```bash
-docker exec <any-container-on-corporate-backend> \
-  curl -s 'http://nats:8222/connz?auth=1' | grep -c '"authorized_user":"legacy-open"'
-# must be 0
-```
-
-Delete from `nats.conf`:
-
-- the `no_auth_user: legacy-open` line
-- the `legacy-open` entry in `users`
-- the `LEGACY_OPEN` permission block
-
-and from `.env` / `docker-compose.yml`, `NATS_PASS_LEGACY_OPEN`. Then recreate
-the server. Unauthenticated connections are now refused.
+- **`no_auth_user` only covers connections presenting NO credentials.** A
+  client that sends a username with a wrong or empty password is rejected
+  outright. A service whose `NATS_URL` interpolated to an empty password
+  therefore failed as soon as auth was switched on, rather than falling back.
+- **Passwords are parsed as config tokens**, not opaque strings. Generate
+  letter-leading values (`n$(openssl rand -hex 24)`); an all-digit value makes
+  the server fail to start.
 
 ## Verifying
 
