@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "nats": "^2.20.0",
-    "resend": "^3.5.0",
+    "resend": "^6.28.0",
     "@anthropic-ai/sdk": "^0.125.0"
   },
   "engines": {
