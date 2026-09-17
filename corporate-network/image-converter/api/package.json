@@ -21,7 +21,7 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/uuid": "^9.0.7",
-    "tsx": "^4.22.4",
+    "tsx": "^4.23.13",
     "typescript": "^7.0.2"
   }
 }
