@@ -2,7 +2,7 @@
   email {$CADDY_EMAIL}
 }
 
-{$ANCHOR_DOMAIN}, vector-weather.selkietech.ca, weather-vector.selkietech.ca, vectorweather.ca, www.vectorweather.ca {
+(anchor_weather_headers) {
   header {
     Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
     X-Content-Type-Options nosniff
@@ -10,10 +10,30 @@
     Referrer-Policy strict-origin-when-cross-origin
     -Server
   }
+}
+
+vectorweather.ca, www.vectorweather.ca, weather-vector.selkietech.ca {
+  import anchor_weather_headers
   # nginx inside the frontend container handles static files and /api/ → backend
-  # vector-weather/weather-vector/vectorweather.ca temporarily share the anchor-weather app
+  # vectorweather.ca/weather-vector temporarily share the anchor-weather app
   # until the commercial app is built — see DEPLOY.md
   reverse_proxy anchor-weather-frontend:80
+}
+
+# Old hosts: browsers are sent to vectorweather.ca, but /api/* is still served
+# in place — the Signal K plugin and other API-key clients call
+# https://anchor-weather.selkietech.ca/api/... and would lose their
+# Authorization header (and POST bodies) on a cross-host redirect.
+# 302 rather than 301 until the move is settled: a cached 301 can't be
+# recalled from users' browsers.
+{$ANCHOR_DOMAIN}, vector-weather.selkietech.ca {
+  import anchor_weather_headers
+  handle /api/* {
+    reverse_proxy anchor-weather-frontend:80
+  }
+  handle {
+    redir https://vectorweather.ca{uri} 302
+  }
 }
 
 {$API_DOMAIN} {
