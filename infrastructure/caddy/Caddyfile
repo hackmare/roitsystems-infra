@@ -12,12 +12,20 @@
   }
 }
 
-vectorweather.ca, www.vectorweather.ca, weather-vector.selkietech.ca {
+vectorweather.ca, weather-vector.selkietech.ca {
   import anchor_weather_headers
   # nginx inside the frontend container handles static files and /api/ → backend
   # vectorweather.ca/weather-vector temporarily share the anchor-weather app
   # until the commercial app is built — see DEPLOY.md
   reverse_proxy anchor-weather-frontend:80
+}
+
+# www goes to the apex so every sign-in happens on the one Google OAuth
+# origin, https://vectorweather.ca. Nothing calls the API on www, so /api/*
+# redirects too. 302 for the same reason as the old hosts below.
+www.vectorweather.ca {
+  import anchor_weather_headers
+  redir https://vectorweather.ca{uri} 302
 }
 
 # Old hosts: browsers are sent to vectorweather.ca, but /api/* is still served
