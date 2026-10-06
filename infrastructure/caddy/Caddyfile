@@ -20,6 +20,20 @@ vectorweather.ca, weather-vector.selkietech.ca {
   reverse_proxy anchor-weather-frontend:80
 }
 
+# Vector Weather push notifications: the self-hosted ntfy server
+# (anchor-weather ntfy-service/, container anchor-weather-ntfy). API only --
+# its web app is disabled -- so not the app's CSP snippet. ntfy holds
+# long-lived subscriber connections; Caddy streams them as-is.
+ntfy.vectorweather.ca {
+  header {
+    Strict-Transport-Security "max-age=63072000; includeSubDomains"
+    X-Content-Type-Options nosniff
+    Referrer-Policy no-referrer
+    -Server
+  }
+  reverse_proxy anchor-weather-ntfy:8080
+}
+
 # www goes to the apex so every sign-in happens on the one Google OAuth
 # origin, https://vectorweather.ca. Nothing calls the API on www, so /api/*
 # redirects too. 302 for the same reason as the old hosts below.
