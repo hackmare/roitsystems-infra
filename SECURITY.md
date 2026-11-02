@@ -10,7 +10,7 @@
 
 If you discover a security vulnerability in this project, please report it responsibly:
 
-**Contact:** security@roitsystems.ca (or info@roitsystems.ca if security alias not yet configured)
+**Contact:** security@roitsystems.ca
 
 Please include:
 - A description of the vulnerability and its potential impact
