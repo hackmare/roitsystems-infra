@@ -32,7 +32,7 @@ const fake = createServer((req, res) => {
     requests.push({ method: req.method, url: req.url, auth: req.headers.authorization, json });
     const fail = json.subject === 'smoke-resend-error';
     res.writeHead(fail ? 422 : 200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(fail ? { statusCode: 422, name: 'validation_error', message: 'smoke' } : { id: `smoke-${requests.length}` }));
+    res.end(JSON.stringify(fail ? { statusCode: 422, name: 'validation_error', message: 'Invalid `to` field: smoke@example.invalid' } : { id: `smoke-${requests.length}` }));
   });
 });
 await new Promise((r) => fake.listen(8025, '127.0.0.1', r));
@@ -42,6 +42,9 @@ const send = (o) => nc.publish('anchor.weather.user.comms', typeof o === 'string
 await sleep(500); // let the service's subscription settle
 
 send('not json');
+// Malformed JSON with an address where the parser stops: its error text quotes
+// about 10 characters from there ("smoke-pars").
+send('{"to_email": smoke-parse@example.invalid}');
 send({ type: 'smoke', to_email: 'smoke@example.invalid', subject: 'no body' });
 send({ type: 'smoke', subject: 'smoke-resend-error', to_email: 'smoke@example.invalid', body_html: '<p>x</p>' });
 send({ type: 'smoke', to_email: 'smoke@example.invalid', to_name: 'Smoke Test', subject: 'Smoke subject',
