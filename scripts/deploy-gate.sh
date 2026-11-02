@@ -15,15 +15,23 @@
 # <target> is infrastructure, contact-inbox or image-converter. Nothing else runs:
 # no shell, no other arguments, and never --allow-caddy-restart.
 #
-# deploy.sh's full output goes to a root-only file under LOG_DIR. The caller (and
-# so the public Actions log) only gets the result, the commit, the containers
-# recreated (or that would be) and how many warnings there were.
+# deploy.sh's full output goes to a root-only file under LOG_DIR, kept 30 days. The
+# caller (and so the public Actions log) only gets the result, the commit, the
+# containers recreated (or that would be) and how many warnings there were.
 set -uo pipefail
 
-REPO=${DEPLOY_GATE_REPO:-/root/roitsystems-infra}
-STATE_DIR=${DEPLOY_GATE_STATE_DIR:-/var/lib/roitsystems-deploy-gate}
-LOG_DIR=${DEPLOY_GATE_LOG_DIR:-/var/log/roitsystems-deploy}
+REPO=/root/roitsystems-infra
+STATE_DIR=/var/lib/roitsystems-deploy-gate
+LOG_DIR=/var/log/roitsystems-deploy
+# The tests point these elsewhere. Over SSH the fixed paths always apply, whatever
+# environment the client managed to send.
+if [[ -z ${SSH_CONNECTION:-} ]]; then
+  REPO=${DEPLOY_GATE_REPO:-$REPO}
+  STATE_DIR=${DEPLOY_GATE_STATE_DIR:-$STATE_DIR}
+  LOG_DIR=${DEPLOY_GATE_LOG_DIR:-$LOG_DIR}
+fi
 MAX_AGE=$((30 * 60))
+LOG_DAYS=30
 umask 077
 
 refuse() { echo "deploy-gate: $*" >&2; exit 2; }
@@ -39,6 +47,7 @@ action=${BASH_REMATCH[1]}
 target=${BASH_REMATCH[2]}
 
 mkdir -p "$STATE_DIR" "$LOG_DIR" || refuse "can't create the state or log folder"
+find "$LOG_DIR" -maxdepth 1 -name '*.log' -type f -mtime +"$LOG_DAYS" -delete 2>/dev/null || true
 stamp="$STATE_DIR/dry-run-$target"
 logfile="$LOG_DIR/$(date -u +%Y%m%dT%H%M%SZ)-$action-$target.log"
 cd "$repo" || refuse "can't enter the repository"

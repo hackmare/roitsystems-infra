@@ -219,13 +219,18 @@ The workflow's key can only run the deploy gate, a copy of
   allows one deploy.
 - **What it shows:** **the Actions log is public**, like the repository. So the
   gate keeps `deploy.sh`'s full output in a root-only file under
-  `/var/log/roitsystems-deploy/` and returns one line: the result, the short
+  `/var/log/roitsystems-deploy/`, deleting files older than 30 days, and returns
+  one line: the result, the short
   commit, the containers recreated (or that would be), and the number of
   warnings. Read the file on the server for the details.
 
 `scripts/test-deploy-gate.sh` tests all of this, and CI runs it.
 
 **Setting it up (once)**
+0. **First, deploy from a shell** the release that contains this workflow, as in
+   [Deploying](#deploying). The gate relies on the server's `deploy.sh` honouring
+   `DEPLOY_COMMIT`, and until that release is on the server, its older `deploy.sh`
+   would ignore it.
 1. **Make a key just for this**, on your own machine:
    `ssh-keygen -t ed25519 -N '' -C github-actions-deploy -f deploy_key`.
 2. **On the server, install the gate** from a checkout of `main` you've read:

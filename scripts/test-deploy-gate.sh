@@ -51,6 +51,17 @@ push_elsewhere() {  # someone else pushes to main
 : > "$CALLS"; SSH_ORIGINAL_COMMAND='dry-run contact-inbox' "$W/repo/scripts/deploy-gate.sh" >"$W/out" 2>&1; echo $? > "$W/rc"
 check 'the copy inside the checkout refuses to run' '[[ $(rc) == 2 && -z $(calls) ]] && grep -q "installed copy" "$W/out"'
 
+# Over SSH, the DEPLOY_GATE_* overrides are ignored: the fixed paths apply.
+: > "$CALLS"; SSH_CONNECTION='192.0.2.1 50000 192.0.2.2 22' SSH_ORIGINAL_COMMAND='dry-run contact-inbox' "$GATE" >"$W/out" 2>&1; echo $? > "$W/rc"
+# (DEPLOY_GATE_REPO points at a working test checkout; over SSH it must not be used.)
+check 'over SSH the gate ignores DEPLOY_GATE_* from the environment' '[[ $(rc) == 2 && -z $(calls) ]]'
+
+# Run logs older than 30 days are deleted; newer ones are kept.
+mkdir -p "$DEPLOY_GATE_LOG_DIR" && touch -t 202001010000 "$DEPLOY_GATE_LOG_DIR/old-run.log" && touch "$DEPLOY_GATE_LOG_DIR/recent-run.log"
+gate 'deploy contact-inbox'   # a valid request (refused later: no dry run yet)
+check 'run logs older than 30 days are deleted, newer ones kept' '[[ ! -e $DEPLOY_GATE_LOG_DIR/old-run.log && -e $DEPLOY_GATE_LOG_DIR/recent-run.log ]]'
+rm -f "$DEPLOY_GATE_LOG_DIR/recent-run.log"
+
 for bad in '' 'deploy' 'dry-run' 'deploy nowhere' 'dry-run contact-inbox extra' 'deploy contact-inbox --allow-caddy-restart' \
   'dry-run contact-inbox; id' 'dry-run contact-inbox && id' $'dry-run contact-inbox\nid' 'bash' '--dry-run contact-inbox' 'DRY-RUN contact-inbox'; do
   gate "$bad"
