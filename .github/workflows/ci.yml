@@ -1,4 +1,4 @@
-# CI for the Node services: install, build, build the image (never pushed), and the smoke test where a
+# CI for the Node services: install, build, unit tests, build the image (never pushed), and the smoke test where a
 # service has one (scripts/smoke/run.sh). Pull requests and pushes to main (so main's builds are checked):
 # no secrets, read-only token, nothing deployed.
 name: CI
@@ -64,6 +64,15 @@ jobs:
             npm run build
           else
             for f in $(node -e 'const p=require("./package.json"); console.log(p.main || "index.js")'); do node --check "$f"; done
+          fi
+
+      - name: Test
+        working-directory: ${{ matrix.dir }}
+        run: |
+          if node -e 'const t = require("./package.json").scripts?.test || ""; process.exit(t && !/No automated tests/.test(t) ? 0 : 1)'; then
+            npm test
+          else
+            echo "::notice::no tests for ${{ matrix.name }} yet"
           fi
 
       - name: Build the image (not pushed)

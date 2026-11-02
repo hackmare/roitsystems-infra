@@ -5,6 +5,7 @@ import cookie from '@fastify/cookie';
 import { imageJobsRoutes } from './routes/image-jobs';
 import { connectNats, closeNats, getImageReadyConsumer, sc } from './services/nats';
 import { ensureDatabases, updateImageJobStatus } from './services/image-jobs';
+import { sessionConfig } from './session';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -21,6 +22,9 @@ const server = Fastify({
 });
 
 async function bootstrap() {
+  // Refuse to start without usable session settings (throws; exits below).
+  sessionConfig();
+
   const corsOrigins = (process.env.CORS_ORIGINS || 'https://roitsystems.ca').split(',').map((o) => o.trim());
 
   await server.register(cookie);
