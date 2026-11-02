@@ -1,5 +1,12 @@
 version: '3.8'
 
+# Logs go to the host's journal, which keeps them 30 days (infrastructure/journald/,
+# see DEPLOY.md). Each line is tagged with the container's name; `docker logs` still works.
+x-logging: &journald
+  driver: journald
+  options:
+    tag: "{{.Name}}"
+
 networks:
   corporate-backend:
     name: corporate-backend
@@ -7,6 +14,7 @@ networks:
 
 services:
   caddy:
+    logging: *journald
     # An exact version and its digest, so a rebuild or a pull can't change the server under
     # Vector Weather and the corporate sites without a reviewed PR. Dependabot proposes updates
     # (.github/dependabot.yml); a new image recreates Caddy, so a deploy needs Morgane's go
@@ -30,6 +38,7 @@ services:
       - couchdb
 
   nats:
+    logging: *journald
     # Exact version and digest (as Caddy's, above): NATS carries Vector Weather's messages too,
     # so an update restarts it under both. Dependabot proposes updates; deploy with Morgane's go.
     image: nats:2.15.2@sha256:991242c32d2738ffd358fd6614dd96c735017b4b3b34bfdb2c52a072d66db211
@@ -64,6 +73,7 @@ services:
       - "127.0.0.1:4222:4222"
 
   couchdb:
+    logging: *journald
     # Exact version and digest: an update restarts CouchDB on the same data volume. Dependabot
     # proposes updates; deploy with Morgane's go, after a backup.
     image: couchdb:3.5.3@sha256:bed314d10cdf58c0fff63352db4c3f168df58a185a773c0e2295105375c5ef10

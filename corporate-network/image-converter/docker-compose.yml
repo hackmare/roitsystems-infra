@@ -1,11 +1,19 @@
 version: '3.8'
 
+# Logs go to the host's journal, which keeps them 30 days (infrastructure/journald/,
+# see DEPLOY.md). Each line is tagged with the container's name; `docker logs` still works.
+x-logging: &journald
+  driver: journald
+  options:
+    tag: "{{.Name}}"
+
 networks:
   corporate-backend:
     external: true
 
 services:
   image-converter-api:
+    logging: *journald
     build: ./api
     container_name: image-converter-api
     environment:
@@ -26,6 +34,7 @@ services:
     restart: unless-stopped
 
   imagemagick-service:
+    logging: *journald
     build: ./imagemagick-service
     container_name: imagemagick-service
     environment:
