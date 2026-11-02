@@ -117,7 +117,7 @@ openssl rand -hex 32
 SSH to the production droplet and update `/root/roitsystems-infra/.env`:
 
 ```bash
-ssh -i ~/.ssh/roitsystems root@137.184.160.162
+ssh root@<droplet-ip>
 vi .env
 ```
 
@@ -125,7 +125,7 @@ Update these values:
 ```
 GOOGLE_CLIENT_ID=<production client ID>
 GOOGLE_CLIENT_SECRET=<production client secret>
-ADMIN_EMAILS=m.oger@roitsystems.ca,morgane@morganeoger.ca
+ADMIN_EMAILS=admin@example.com
 SESSION_SECRET=<production session secret>
 API_DOMAIN=pubapi.roitsystems.ca
 ```
