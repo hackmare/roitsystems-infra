@@ -10,8 +10,9 @@ import { requireGoogleAuth } from '../auth';
 const submitJobSchema = z.object({
   filename: z.string().min(1).max(255),
   data: z.string(),
-  format_in: z.string().min(1).max(10),
-  format_out: z.string().min(1).max(10),
+  // The formats imagemagick-service converts; SVG is output only.
+  format_in: z.enum(['png', 'jpg', 'jpeg', 'webp', 'gif']),
+  format_out: z.enum(['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg']),
   quality: z.number().int().min(1).max(100).optional(),
   width: z.number().int().min(1).optional(),
   height: z.number().int().min(1).optional(),

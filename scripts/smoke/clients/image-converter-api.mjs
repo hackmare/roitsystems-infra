@@ -3,6 +3,7 @@
 // JetStream stream and consumer), job routes refusing without a login, and the
 // image.ready listener updating jobs in CouchDB.
 import { connect, StringCodec } from '/app/node_modules/nats/index.js';
+import { createHmac } from 'crypto';
 
 const API = 'http://localhost:3000';
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT || 20) * 1000;
@@ -25,6 +26,18 @@ const until = async (fn) => {
 const couch = (path, init = {}) => fetch(`${process.env.COUCH_URL}${path}`,
   { ...init, headers: { Authorization: couchAuth, 'Content-Type': 'application/json' } });
 
+// An admin session cookie signed with the smoke test's dummy SESSION_SECRET (from
+// image-converter-api.conf; this process runs in the service container and shares
+// its environment), in the format auth.ts verifies.
+const session = (() => {
+  const b64 = Buffer.from(JSON.stringify({ email: 'smoke@example.invalid', exp: Date.now() + 600_000 })).toString('base64url');
+  return `session=${b64}.${createHmac('sha256', process.env.SESSION_SECRET).update(b64).digest('base64url')}`;
+})();
+const submitJob = (body) => fetch(`${API}/api/image-jobs`, {
+  method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/json', Cookie: session },
+  body: JSON.stringify({ filename: 'x.png', data: 'aGk=', format_in: 'png', format_out: 'jpg', ...body }),
+});
+
 const health = await until(async () => { const r = await fetch(`${API}/health`); return r.ok && r.json(); });
 check(health?.status === 'ok', 'GET /health → 200 {status: "ok"}');
 
@@ -45,6 +58,18 @@ const submit = await fetch(`${API}/api/image-jobs`, {
 check([302, 401, 403].includes(submit.status), `POST /api/image-jobs without login → ${submit.status}, refused`);
 const status = await fetch(`${API}/api/image-jobs/smoke`, { redirect: 'manual' });
 check([302, 401, 403].includes(status.status), `GET /api/image-jobs/:id without login → ${status.status}, refused`);
+
+// Formats: only those imagemagick-service converts are accepted.
+for (const [what, body, expect] of [
+  ['format_out tiff', { format_out: 'tiff' }, 400],
+  ['format_in svg', { format_in: 'svg', format_out: 'png' }, 400],
+  ['format_out svg', { format_out: 'svg' }, 202],
+]) {
+  const r = await submitJob(body);
+  check(r.status === expect, `POST /api/image-jobs (${what}) → ${r.status}, expect ${expect}`);
+}
+const html = await (await fetch(`${API}/convert`)).text();
+check(!/value="tiff"/i.test(html) && /value="svg"/.test(html), 'admin page offers no TIFF output');
 
 // The listener: queued jobs become done / error when image.ready arrives.
 const js = nc.jetstream();
