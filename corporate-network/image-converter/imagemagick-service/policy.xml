@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ImageMagick policy for imagemagick-service, installed as /etc/ImageMagick-7/policy.xml.
+  Deny by default; allow only the coders index.js uses. Later rules override earlier ones.
+  The smoke test (scripts/smoke/) checks that this file is the active policy.
+-->
+<policymap>
+  <!-- Resource limits; the container itself is capped at 512 MB (docker-compose.yml). -->
+  <policy domain="resource" name="memory" value="256MiB"/>
+  <policy domain="resource" name="map" value="512MiB"/>
+  <policy domain="resource" name="width" value="16KP"/>
+  <policy domain="resource" name="height" value="16KP"/>
+  <policy domain="resource" name="area" value="128MP"/>
+  <policy domain="resource" name="disk" value="1GiB"/>
+  <policy domain="resource" name="time" value="60"/>
+  <policy domain="resource" name="list-length" value="128"/>
+
+  <!-- No external programs. -->
+  <policy domain="delegate" rights="none" pattern="*"/>
+
+  <!-- No "@file" indirection in arguments. -->
+  <policy domain="path" rights="none" pattern="@*"/>
+
+  <!-- Coders: none, then only the four formats the service converts. -->
+  <policy domain="coder" rights="none" pattern="*"/>
+  <policy domain="coder" rights="read|write" pattern="{PNG,JPEG,WEBP,GIF}"/>
+
+  <!-- Never load these modules, whatever the coder rules above say. -->
+  <policy domain="module" rights="none" pattern="{URL,HTTP,HTTPS,FTP,MVG,MSL,TEXT,LABEL,CAPTION,EPHEMERAL,SVG,MSVG,PS,PDF,EPS,XPS}"/>
+</policymap>

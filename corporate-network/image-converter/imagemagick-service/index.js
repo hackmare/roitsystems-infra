@@ -7,10 +7,25 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 
 const execFileAsync = promisify(execFile);
-const unlinkAsync = promisify(unlink);
 
 const NATS_URL = process.env.NATS_URL || 'nats://localhost:4222';
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
+
+// Formats the image ships coders for (see the Dockerfile). The names also become
+// temp-file extensions, so only these exact strings are accepted. SVG is output
+// only: it is a PNG wrapped in an <svg> element here, so ImageMagick never parses SVG.
+const INPUT_FORMATS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif']);
+const OUTPUT_FORMATS = new Set([...INPUT_FORMATS, 'svg']);
+// ImageMagick coder for each format, named explicitly on every path so it never
+// picks a decoder from the file's content. policy.xml allows only these coders.
+const CODER = { png: 'PNG', jpg: 'JPEG', jpeg: 'JPEG', webp: 'WEBP', gif: 'GIF', svg: 'PNG' };
+const COLORSPACES = new Set(['sRGB', 'RGB', 'Gray', 'CMYK']);
+
+// A finite number clamped to [min, max], or undefined.
+const clamp = (v, min, max) => {
+  const n = Number(v);
+  return v == null || v === '' || !Number.isFinite(n) ? undefined : Math.min(max, Math.max(min, n));
+};
 
 const log = (level, msg, data) => {
   const entry = { timestamp: new Date().toISOString(), level, msg, ...data };
@@ -43,12 +58,27 @@ async function main() {
   try {
     for await (const msg of sub) {
       (async () => {
+        // Kept outside the try so a failure reply still names the job; the API
+        // drops replies without a transaction_id.
+        let transactionId;
         try {
           const request = JSON.parse(new TextDecoder().decode(msg.data));
-          const { transaction_id, format_in, format_out, data: base64Data, params = {} } = request;
+          const { transaction_id, data: base64Data, params = {} } = request;
+          transactionId = transaction_id;
+          const format_in = String(request.format_in || '').toLowerCase();
+          const format_out = String(request.format_out || '').toLowerCase();
 
           if (!transaction_id || !base64Data || !format_in || !format_out) {
             const error = 'Missing required fields: transaction_id, data, format_in, format_out';
+            log('warn', 'Invalid request', { transaction_id, error });
+            nc.publish('image.ready', new TextEncoder().encode(
+              JSON.stringify({ transaction_id, success: false, error })
+            ));
+            return;
+          }
+
+          if (!INPUT_FORMATS.has(format_in) || !OUTPUT_FORMATS.has(format_out)) {
+            const error = `Unsupported format: ${format_in} -> ${format_out}`;
             log('warn', 'Invalid request', { transaction_id, error });
             nc.publish('image.ready', new TextEncoder().encode(
               JSON.stringify({ transaction_id, success: false, error })
@@ -60,19 +90,30 @@ async function main() {
           const inputBuffer = Buffer.from(base64Data, 'base64');
           const tmpId = randomUUID();
           const inputPath = join(tmpdir(), `convert-${tmpId}-input.${format_in}`);
-          const outputPath = join(tmpdir(), `convert-${tmpId}-output.${format_out}`);
+          // SVG output is built from a PNG (see below), so ImageMagick writes PNG for it.
+          const isSvg = format_out === 'svg';
+          const outputPath = join(tmpdir(), `convert-${tmpId}-output.${isSvg ? 'png' : format_out}`);
 
           try {
             // Write input file
             await writeFile(inputPath, inputBuffer);
 
+            // Numeric parameters are clamped to the admin UI's ranges.
+            const density = Math.round(clamp(params.density, 1, 600) ?? 72);
+            const width = clamp(params.width, 1, 16384);
+            const height = clamp(params.height, 1, 16384);
+            const rotate = clamp(params.rotate, 0, 359) ?? 0;
+            const blur = clamp(params.blur, 0, 10) ?? 0;
+            const sharpen = clamp(params.sharpen, 0, 10) ?? 0;
+            const quality = Math.round(clamp(params.quality, 1, 100) ?? 85);
+
             // Build ImageMagick convert command with parameters
-            const args = ['-density', String(params.density || 72)];
+            const args = ['-density', String(density)];
 
             // Handle transparency: if transparentBackground is true, ensure alpha is on
             if (params.transparentBackground) {
               args.push('-alpha', 'on');
-            } else if (params.background) {
+            } else if (typeof params.background === 'string' && /^#?[0-9a-f]{6}$/i.test(params.background)) {
               // Background color (set early so it applies to all operations)
               let bgColor = params.background;
               // Remove # if present, ImageMagick accepts both formats
@@ -81,19 +122,19 @@ async function main() {
             }
 
             // Input file (use [0] to select first frame for multi-frame images)
-            args.push(`${inputPath}[0]`);
+            args.push(`${CODER[format_in]}:${inputPath}[0]`);
 
             // Resize with aspect ratio lock if specified
-            if (params.width || params.height) {
-              const w = params.width || '';
-              const h = params.height || '';
+            if (width || height) {
+              const w = width ? Math.round(width) : '';
+              const h = height ? Math.round(height) : '';
               const lockAR = params.lockAspectRatio ? '' : '!';
               args.push('-resize', `${w}x${h}${lockAR}`);
             }
 
             // Rotate
-            if (params.rotate && params.rotate !== 0) {
-              args.push('-rotate', String(params.rotate));
+            if (rotate !== 0) {
+              args.push('-rotate', String(rotate));
             }
 
             // Trim whitespace
@@ -102,7 +143,7 @@ async function main() {
             }
 
             // Colorspace
-            if (params.colorspace && params.colorspace !== 'sRGB') {
+            if (COLORSPACES.has(params.colorspace) && params.colorspace !== 'sRGB') {
               args.push('-colorspace', params.colorspace);
             }
 
@@ -113,61 +154,39 @@ async function main() {
             }
 
             // Blur
-            if (params.blur && params.blur > 0) {
-              args.push('-blur', `0x${params.blur}`);
+            if (blur > 0) {
+              args.push('-blur', `0x${blur}`);
             }
 
             // Sharpen
-            if (params.sharpen && params.sharpen > 0) {
-              args.push('-sharpen', `0x${params.sharpen}`);
+            if (sharpen > 0) {
+              args.push('-sharpen', `0x${sharpen}`);
             }
 
             // Quality (for lossy formats)
-            args.push('-quality', String(params.quality || 85));
+            args.push('-quality', String(quality));
 
             // Output format and path
-            args.push(outputPath);
+            args.push(`${CODER[format_out]}:${outputPath}`);
 
             // Run ImageMagick convert
-            await execFileAsync('convert', args);
+            await execFileAsync('magick', args);
 
             // Read output file
-            let base64Output = '';
+            let outputBuffer = await readFile(outputPath);
 
-            if (format_out.toLowerCase() === 'svg') {
-              // For SVG, we need to embed the raster image in an SVG container
-              // Convert to PNG first, then wrap in SVG
-              const pngPath = join(tmpdir(), `convert-${tmpId}-temp.png`);
-
-              // Re-run convert to generate PNG
-              const pngArgs = [...args.slice(0, -1)]; // Remove output path
-              pngArgs.push(pngPath);
-              await execFileAsync('convert', pngArgs);
-
-              // Read PNG and encode as base64
-              const pngBuffer = await readFile(pngPath);
-              const pngBase64 = pngBuffer.toString('base64');
-
-              // Get image dimensions
-              const identifyResult = await execFileAsync('identify', ['-format', '%wx%h', pngPath]);
+            if (isSvg) {
+              // Embed the PNG in an SVG container
+              const identifyResult = await execFileAsync('identify', ['-format', '%wx%h', `PNG:${outputPath}`]);
               const [width, height] = identifyResult.stdout.split('x').map(Number);
-
-              // Create SVG wrapper
               const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-  <image x="0" y="0" width="${width}" height="${height}" xlink:href="data:image/png;base64,${pngBase64}"/>
+  <image x="0" y="0" width="${width}" height="${height}" xlink:href="data:image/png;base64,${outputBuffer.toString('base64')}"/>
 </svg>`;
-
-              base64Output = Buffer.from(svgContent).toString('base64');
-
-              // Clean up PNG temp file
-              try {
-                await unlinkAsync(pngPath);
-              } catch (e) {}
-            } else {
-              const outputBuffer = await readFile(outputPath);
-              base64Output = outputBuffer.toString('base64');
+              outputBuffer = Buffer.from(svgContent);
             }
+
+            const base64Output = outputBuffer.toString('base64');
 
             // Publish result with transaction_id
             nc.publish('image.ready', new TextEncoder().encode(
@@ -184,23 +203,25 @@ async function main() {
           } finally {
             // Clean up temp files
             try {
-              await unlinkAsync(inputPath);
+              await unlink(inputPath);
             } catch (e) {
               // File may not exist
             }
             try {
-              await unlinkAsync(outputPath);
+              await unlink(outputPath);
             } catch (e) {
               // File may not exist
             }
           }
         } catch (err) {
-          const error = err.message || String(err);
-          log('error', 'Conversion failed', { error });
-          // Publish error without transaction_id if it failed to parse
+          // ImageMagick's own message (temp paths, library detail) stays in the log;
+          // the reply, which reaches the admin UI, gets a fixed one.
+          log('error', 'Conversion failed', { transaction_id: transactionId, error: err.message || String(err) });
+          const error = 'Conversion failed';
+          // transaction_id is undefined only if the request didn't parse
           try {
             nc.publish('image.ready', new TextEncoder().encode(
-              JSON.stringify({ success: false, error })
+              JSON.stringify({ transaction_id: transactionId, success: false, error })
             ));
           } catch (publishErr) {
             log('error', 'Failed to publish error response', { error: publishErr.message });
