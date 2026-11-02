@@ -9,6 +9,7 @@ import { adminRoutes, ADMIN_HTML } from './routes/admin';
 import { authRoutes, requireGoogleAuth } from './routes/auth';
 import { connectNats, closeNats } from './services/nats';
 import { ensureDatabases } from './services/couchdb';
+import { sessionConfig } from './session';
 
 const server = Fastify({
   logger: {
@@ -23,6 +24,9 @@ const server = Fastify({
 });
 
 async function bootstrap() {
+  // Refuse to start without usable session settings (throws; exits below).
+  sessionConfig();
+
   const corsOrigins = (process.env.CORS_ORIGINS || 'https://roitsystems.ca').split(',').map((o) => o.trim());
 
   await server.register(cookie);

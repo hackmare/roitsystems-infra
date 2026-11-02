@@ -1,11 +1,11 @@
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { OAuth2Client, TokenPayload } from 'google-auth-library';
-import { createHmac, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
+import { SessionPayload, isAdmin, sessionConfig, signSession, verifySession } from '../session';
+import { safeRedirect } from '../redirect';
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map((e) => e.trim());
-const SESSION_SECRET = process.env.SESSION_SECRET || '';
 const API_DOMAIN = process.env.API_DOMAIN || 'localhost';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -15,39 +15,7 @@ const oauth2Client = new OAuth2Client(
   `${NODE_ENV === 'production' ? 'https' : 'http'}://${API_DOMAIN}/auth/callback`,
 );
 
-interface SessionPayload {
-  email: string;
-  exp: number;
-}
-
-function signSessionPayload(payload: SessionPayload): string {
-  const json = JSON.stringify(payload);
-  const b64 = Buffer.from(json).toString('base64url');
-  const sig = createHmac('sha256', SESSION_SECRET).update(b64).digest('base64url');
-  return `${b64}.${sig}`;
-}
-
-function verifySessionPayload(token: string): SessionPayload | null {
-  try {
-    const [b64, sig] = token.split('.');
-    if (!b64 || !sig) return null;
-
-    const expectedSig = createHmac('sha256', SESSION_SECRET).update(b64).digest('base64url');
-    if (sig !== expectedSig) return null;
-
-    const json = Buffer.from(b64, 'base64url').toString('utf-8');
-    const payload = JSON.parse(json) as SessionPayload;
-
-    if (payload.exp < Date.now()) return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
-function isValidRedirect(path: string): boolean {
-  return path.startsWith('/');
-}
+const DEFAULT_NEXT = '/corporate-network/contact/admin';
 
 export function requireGoogleAuth(request: FastifyRequest, reply: FastifyReply): SessionPayload | null {
   const sessionCookie = request.cookies.session;
@@ -57,8 +25,9 @@ export function requireGoogleAuth(request: FastifyRequest, reply: FastifyReply):
     return null;
   }
 
-  const payload = verifySessionPayload(sessionCookie);
-  if (!payload || !ADMIN_EMAILS.includes(payload.email)) {
+  const { secret, adminEmails } = sessionConfig();
+  const payload = verifySession(sessionCookie, secret);
+  if (!payload || !isAdmin(payload.email, adminEmails)) {
     reply.status(403).send({ error: 'Access denied' });
     return null;
   }
@@ -72,10 +41,7 @@ export const authRoutes: FastifyPluginAsync = async (server) => {
       return reply.status(503).send({ error: 'OAuth not configured' });
     }
 
-    let next = (request.query as { next?: string }).next || '/corporate-network/contact/admin';
-    if (!isValidRedirect(next)) {
-      next = '/corporate-network/contact/admin';
-    }
+    const next = safeRedirect((request.query as { next?: string }).next, DEFAULT_NEXT);
 
     const state = randomBytes(16).toString('hex');
     reply.setCookie('oauth_state', state, {
@@ -103,7 +69,7 @@ export const authRoutes: FastifyPluginAsync = async (server) => {
   server.get('/callback', async (request, reply) => {
     const { code, state } = request.query as { code?: string; state?: string };
     const storedState = request.cookies.oauth_state;
-    const next = request.cookies.oauth_next || '/corporate-network/contact/admin';
+    const next = safeRedirect(request.cookies.oauth_next, DEFAULT_NEXT);
 
     if (!code || !state || !storedState || state !== storedState) {
       return reply.status(400).send({ error: 'Invalid OAuth state' });
@@ -118,16 +84,16 @@ export const authRoutes: FastifyPluginAsync = async (server) => {
       const payload = ticket.getPayload() as TokenPayload & { email?: string };
       const email = payload.email;
 
-      if (!email || !ADMIN_EMAILS.includes(email)) {
+      if (!isAdmin(email, sessionConfig().adminEmails)) {
         return reply.status(403).send({ error: 'Access denied' });
       }
 
       const sessionPayload: SessionPayload = {
-        email,
+        email: email!,
         exp: Date.now() + 8 * 60 * 60 * 1000, // 8 hours
       };
 
-      reply.setCookie('session', signSessionPayload(sessionPayload), {
+      reply.setCookie('session', signSession(sessionPayload, sessionConfig().secret), {
         httpOnly: true,
         secure: NODE_ENV === 'production',
         sameSite: 'lax',
