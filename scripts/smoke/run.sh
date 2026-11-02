@@ -44,8 +44,9 @@ COUCH_USER=smoke
 COUCH_PASS=smoke-only-password
 
 # Per-service start-up settings live in clients/<service>.conf (sourced; may set
-# JETSTREAM=1, COUCH=1, the ENV array of extra `docker run` arguments, and a
-# setup function run once NATS and CouchDB are up, before the service starts).
+# JETSTREAM=1, COUCH=1, the ENV array of extra `docker run` arguments, a setup
+# function run once NATS and CouchDB are up, before the service starts, and a
+# post_check function run after the client, e.g. to inspect the service's log).
 # Dummy values only: nothing here reaches the internet.
 JETSTREAM=0
 COUCH=0
@@ -79,6 +80,8 @@ status=0
 docker exec -e NATS_URL="$NATS_URL" -e COUCH_URL="$COUCH_URL" -e COUCH_AUTH="$COUCH_USER:$COUCH_PASS" \
   -e SMOKE_TIMEOUT="${SMOKE_TIMEOUT:-20}" "$SVC" \
   node /tmp/smoke-client.mjs || status=$?
+
+if declare -F post_check >/dev/null; then post_check || status=1; fi
 
 state=$(docker inspect -f '{{.State.Status}} restarts={{.RestartCount}}' "$SVC")
 echo "service container: $state"

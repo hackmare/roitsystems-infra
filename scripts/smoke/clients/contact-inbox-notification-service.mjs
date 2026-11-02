@@ -77,6 +77,7 @@ event('smoke-other-site');
 event('smoke-ok');
 event('smoke-ok'); // duplicate
 event('smoke-hostile');
+event('smoke/odd?id#1'); // must reach CouchDB as one encoded path segment
 
 const email = await until(() => seen.resend.find((r) => r.json?.subject === 'New Contact: Smoke subject'));
 const hostile = await until(() => seen.resend.find((r) => /smoke-hostile/.test(r.json?.html || '')));
@@ -84,6 +85,7 @@ await sleep(1000); // time for any further (unwanted) requests
 
 const couchIds = seen.couch.map((r) => r.url.split('/').pop());
 check(['smoke-missing', 'smoke-other-site', 'smoke-ok'].every((id) => couchIds.includes(id)), `messages fetched from CouchDB (${couchIds.join(', ')})`);
+check(seen.couch.some((r) => r.url === '/contact_messages/smoke%2Fodd%3Fid%231'), 'a message id is sent to CouchDB URL-encoded');
 check(seen.couch.every((r) => r.headers.authorization === 'Basic ' + Buffer.from('smoke:smoke').toString('base64')), 'CouchDB requests use the configured credentials');
 check(seen.anthropic.length === 2, `exactly two analysis requests (${seen.anthropic.length}): the two roitsystems.ca messages, once each`);
 const a = seen.anthropic.find((r) => /Smoke test message/.test(JSON.stringify(r.json)));

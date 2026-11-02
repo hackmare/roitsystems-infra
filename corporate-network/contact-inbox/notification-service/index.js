@@ -69,7 +69,9 @@ function headerText(value, max = 150) {
 async function analyzeMessage(message) {
   try {
     console.error(`[CLAUDE] Starting analysis for message ${message._id}`);
-    log('info', 'Starting Claude analysis', { messageId: message._id, subject: message.subject });
+    // Logs carry ids, lengths and status only: the message and anything derived from
+    // it (the analysis included) are personal data.
+    log('info', 'Starting Claude analysis', { messageId: message._id });
 
     const prompt = `You are an elite AI research analyst for RO IT Systems. Your job is to deeply research and analyze this contact form, providing strategic recommendations backed by industry knowledge.
 
@@ -172,14 +174,14 @@ Return ONLY the JSON object. No explanation, no markdown, just valid JSON.`;
             messageId: message._id,
             parseError: parseError.message,
             regexParseError: regexParseError.message,
-            rawResponse: content.substring(0, 300),
+            responseLength: content.length,
           });
           analysis = null;
         }
       } else {
         log('warn', 'No JSON found in Claude response', {
           messageId: message._id,
-          rawResponse: content.substring(0, 300),
+          responseLength: content.length,
         });
         analysis = null;
       }
@@ -203,12 +205,11 @@ Return ONLY the JSON object. No explanation, no markdown, just valid JSON.`;
       };
     }
 
-    console.error(`[CLAUDE] Analysis completed: ${JSON.stringify(analysis)}`);
     log('info', 'Claude analysis completed', {
       messageId: message._id,
-      hasCompanyInference: !!analysis.companyInference,
+      hasCompanyResearch: !!analysis.companyResearch,
       hasRecommendations: !!analysis.recommendedServices?.length,
-      rawResponse: content.substring(0, 200),
+      responseLength: content.length,
     });
 
     return analysis;
@@ -326,7 +327,7 @@ async function sendEmailNotification(message, analysis) {
       messageId: message._id,
       from: NOTIFICATION_FROM_EMAIL,
       to: NOTIFICATION_EMAIL,
-      subject,
+      subjectLength: subject.length,
       htmlLength: htmlContent.length,
     });
 
@@ -395,7 +396,7 @@ async function fetchMessage(messageId) {
   const user = process.env.COUCHDB_USER || 'admin';
   const password = process.env.COUCHDB_PASSWORD || '';
   const auth = Buffer.from(`${user}:${password}`).toString('base64');
-  const url = `${couchdbUrl}/contact_messages/${messageId}`;
+  const url = `${couchdbUrl}/contact_messages/${encodeURIComponent(messageId)}`;
 
   try {
     log('info', 'CouchDB: Initiating fetch', { messageId, url });
@@ -475,11 +476,7 @@ async function processMessage(natsEvent) {
   processedMessages.add(messageId);
 
   try {
-    log('info', 'Processing contact message', {
-      messageId,
-      sender: message.email,
-      subject: message.subject,
-    });
+    log('info', 'Processing contact message', { messageId });
 
     // Analyze message content
     const analysis = await analyzeMessage(message);
