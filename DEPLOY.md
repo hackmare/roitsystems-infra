@@ -20,7 +20,9 @@ Edit `.env` and set:
 - `API_DOMAIN` — your public domain (e.g., `api.roitsystems.ca`)
 - `CADDY_EMAIL` — email for Let's Encrypt certificate renewal
 - `COUCHDB_USER` and `COUCHDB_PASSWORD` — strong credentials
-- `ADMIN_TOKEN` — generate with `openssl rand -hex 32`
+- `SESSION_SECRET` — signs admin sessions; at least 32 characters, generate with `openssl rand -hex 32`
+- `ADMIN_EMAILS` — comma-separated Google accounts allowed into the admin pages
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` — Google sign-in for the admin pages
 - `CLAUDE_API_KEY` — from console.anthropic.com
 - `RESEND_API_KEY` — from resend.com
 - All other secrets
@@ -107,18 +109,38 @@ deploy anything.)
 
 Don't start unless all of these hold:
 
-1. **`main` builds.** Every service changed since the last deploy installs
-   from its lockfile (`npm ci`) and builds (`npm run build`), and its Docker
-   image builds. A CI workflow will check this automatically; until then,
-   check it locally.
-2. **Compose files validate:** `docker compose config` for each target.
-3. **contact-inbox starts on its current Fastify major.** Before any
-   contact-inbox rebuild, build the API image, start it, and check that
-   `/health` and the contact route answer. This is a hard stop: no
-   contact-inbox rebuild until it passes.
-4. **Open PRs touching the target** are merged or deliberately left for a
+1. **CI is green on the commit you will deploy.** The CI workflow
+   (`.github/workflows/ci.yml`) runs on every pull request and every push to
+   `main`. For each Node service it installs from the lockfile, builds, runs
+   the unit tests where there are any, builds the Docker image, and runs its
+   smoke test. Check the run for the `main` commit on GitHub's Actions tab.
+2. **Compose files validate:** `docker compose config --quiet` for each
+   target (CI doesn't check this yet).
+3. **The services start.** CI's smoke tests (`scripts/smoke/run.sh`) start
+   each image against throwaway NATS and CouchDB and check it: for
+   contact-inbox's API, `/health`, the contact route (invalid and valid
+   posts), and admin routes refusing forged or missing sessions. A failed
+   smoke test is a hard stop for that service. To rerun one locally:
+
+   ```bash
+   docker build -t local/contact-inbox-api corporate-network/contact-inbox/api
+   IMAGE=local/contact-inbox-api scripts/smoke/run.sh contact-inbox-api
+   ```
+
+   `scripts/smoke/run.sh --list` shows the services that have a smoke test.
+4. **Session settings are present.** contact-inbox's API and
+   image-converter's API refuse to start unless `SESSION_SECRET` is at least
+   32 characters and `ADMIN_EMAILS` names at least one admin. Both services
+   read the same `SESSION_SECRET`. Check the server's `.env` without printing
+   the values:
+
+   ```bash
+   sed -n 's/^SESSION_SECRET=//p' .env | tr -d '\n' | wc -c   # 32 or more
+   sed -n 's/^ADMIN_EMAILS=//p' .env | tr ',' '\n' | grep -c '[^[:space:]]'  # 1 or more
+   ```
+5. **Open PRs touching the target** are merged or deliberately left for a
    later deploy.
-5. **The server checkout is clean.** `git status` shows no edits to tracked
+6. **The server checkout is clean.** `git status` shows no edits to tracked
    files, and `git stash list` shows nothing you need. (`deploy.sh` refuses
    a dirty tree anyway.)
 
@@ -137,7 +159,8 @@ Don't start unless all of these hold:
 1. `deploy.sh` reports the anchor-weather containers unchanged. Any
    difference means stop and investigate.
 2. Every recreated container is up and not restarting (`docker ps`; look for
-   a rising restart count).
+   a rising restart count). A service that refuses its settings at start-up
+   (gate 4) exits and restarts in a loop; its log says which setting.
 3. The [health checks](#health-checks) answer, including the public sites
    served through Caddy.
 4. A few minutes of `docker logs` for the recreated containers show no new
@@ -147,14 +170,9 @@ If a check fails, roll back (see [Rollback](#rollback)).
 
 ### Planned improvements
 
-- A CI workflow on pull requests and pushes: install, build,
-  `docker compose config` and image builds for every service. Read-only
-  permissions, no secrets, and actions pinned to commits.
-- The contact-inbox start-up test as a script, so gate 3 is one command.
+- `docker compose config` in CI, so gate 2 is automatic too.
 - Images tagged by commit, with the last two kept, so a rollback needs no
   rebuild.
-- Node 24 for every service, one PR per service, internet-facing services
-  first.
 - Optionally later, a manually started deploy workflow that requires
   approval and uses a key restricted to `deploy.sh`.
 
@@ -168,7 +186,9 @@ If a check fails, roll back (see [Rollback](#rollback)).
 | `CADDY_EMAIL` | TLS certificate email | `m.oger@roitsystems.ca` |
 | `COUCHDB_USER` | Database admin | `admin` |
 | `COUCHDB_PASSWORD` | Database password | `[strong password]` |
-| `ADMIN_TOKEN` | API auth token | `[32-byte hex]` |
+| `SESSION_SECRET` | Signs admin sessions (contact-inbox and image-converter APIs; at least 32 characters, or they won't start) | `[openssl rand -hex 32]` |
+| `ADMIN_EMAILS` | Google accounts allowed into the admin pages (at least one, or the APIs won't start) | `admin@example.com` |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google sign-in for the admin pages | From Google Cloud Console |
 | `CLAUDE_API_KEY` | Claude API access | From console.anthropic.com |
 | `RESEND_API_KEY` | Email service | From resend.com |
 | `NOTIFICATION_EMAIL` | Recipient email | `m.oger@roitsystems.ca` |
@@ -291,25 +311,27 @@ docker-compose down
 
 ## Health Checks
 
-Once deployed, test these endpoints:
+Once deployed, test these endpoints. None of them stores anything or sends
+email.
 
 ```bash
 # Health check (should return 200)
-curl https://api.roitsystems.ca/health
+curl https://pubapi.roitsystems.ca/health
 
-# Contact form submission (should return 202)
-curl -X POST https://api.roitsystems.ca/corporate-network/contact \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Test","email":"test@example.com","message":"Hi"}'
+# Contact route is up: an invalid submission is refused (should return 400).
+# A valid one would store a real message and send a notification email.
+curl -s -o /dev/null -w '%{http_code}\n' -X POST https://pubapi.roitsystems.ca/api/contact \
+  -H "Content-Type: application/json" -d '{}'
 
-# Contact admin (requires ADMIN_TOKEN)
-curl -H "Authorization: Bearer $ADMIN_TOKEN" \
-  https://api.roitsystems.ca/corporate-network/contact/admin
-
-# Image converter admin (requires ADMIN_TOKEN)
-curl -H "Authorization: Bearer $ADMIN_TOKEN" \
-  https://api.roitsystems.ca/corporate-network/image-converter/convert
+# Admin API without a session redirects to Google sign-in (should return 302)
+curl -s -o /dev/null -w '%{http_code}\n' https://pubapi.roitsystems.ca/api/admin/messages
 ```
+
+The admin pages need a Google sign-in with an `ADMIN_EMAILS` account; open
+them in a browser:
+
+- https://pubapi.roitsystems.ca/corporate-network/contact/admin
+- https://pubapi.roitsystems.ca/corporate-network/image-converter/convert
 
 ## Rollback
 
