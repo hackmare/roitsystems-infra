@@ -1,5 +1,23 @@
 {
   email {$CADDY_EMAIL}
+  # The visitor's real address, behind Cloudflare. Only requests arriving from
+  # Cloudflare's own ranges are trusted to say who the visitor is (CF-Connecting-IP,
+  # which Cloudflare sets and overwrites); from any other peer, the peer's own
+  # address is the client. Every proxy below then sends that one address upstream
+  # as X-Forwarded-For (to_upstream), so a visitor can't put their own entries in it.
+  # Cloudflare's ranges are from https://www.cloudflare.com/ips-v4 and /ips-v6,
+  # fetched 2026-11-02: re-check them when Cloudflare announces a change.
+  servers {
+    trusted_proxies static 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 104.16.0.0/13 104.24.0.0/14 108.162.192.0/18 131.0.72.0/22 141.101.64.0/18 162.158.0.0/15 172.64.0.0/13 173.245.48.0/20 188.114.96.0/20 190.93.240.0/20 197.234.240.0/22 198.41.128.0/17 2400:cb00::/32 2405:8100::/32 2405:b500::/32 2606:4700::/32 2803:f800::/32 2a06:98c0::/29 2c0f:f248::/32
+    client_ip_headers CF-Connecting-IP
+    trusted_proxies_strict
+  }
+}
+
+# inside every reverse_proxy: the visitor's address, as Caddy determined it, and
+# nothing a client sent
+(to_upstream) {
+  header_up X-Forwarded-For {client_ip}
 }
 
 (anchor_weather_headers) {
@@ -17,7 +35,9 @@ vectorweather.ca, weather-vector.selkietech.ca {
   # nginx inside the frontend container handles static files and /api/ → backend
   # vectorweather.ca/weather-vector temporarily share the anchor-weather app
   # until the commercial app is built — see DEPLOY.md
-  reverse_proxy anchor-weather-frontend:80
+  reverse_proxy anchor-weather-frontend:80 {
+    import to_upstream
+  }
 }
 
 # Vector Weather push notifications: the self-hosted ntfy server
@@ -31,7 +51,9 @@ ntfy.vectorweather.ca {
     Referrer-Policy no-referrer
     -Server
   }
-  reverse_proxy anchor-weather-ntfy:8080
+  reverse_proxy anchor-weather-ntfy:8080 {
+    import to_upstream
+  }
 }
 
 # www goes to the apex so every sign-in happens on the one Google OAuth
@@ -51,7 +73,9 @@ www.vectorweather.ca {
 {$ANCHOR_DOMAIN}, vector-weather.selkietech.ca {
   import anchor_weather_headers
   handle /api/* {
-    reverse_proxy anchor-weather-frontend:80
+    reverse_proxy anchor-weather-frontend:80 {
+      import to_upstream
+    }
   }
   handle {
     redir https://vectorweather.ca{uri} 302
@@ -86,46 +110,60 @@ www.vectorweather.ca {
   # public contact form API endpoint (from roitsystems.ca)
   @contact-api path /api/contact /api/contact/*
   handle @contact-api {
-    reverse_proxy contact-inbox-api:3000
+    reverse_proxy contact-inbox-api:3000 {
+      import to_upstream
+    }
   }
 
   # admin API endpoint (for corporate network contact management)
   @admin-api path /api/admin /api/admin/*
   handle @admin-api {
-    reverse_proxy contact-inbox-api:3000
+    reverse_proxy contact-inbox-api:3000 {
+      import to_upstream
+    }
   }
 
   # OAuth flow (Google authentication)
   @auth path /auth /auth/*
   handle @auth {
-    reverse_proxy contact-inbox-api:3000
+    reverse_proxy contact-inbox-api:3000 {
+      import to_upstream
+    }
   }
 
   # corporate-network dashboard (root)
   @network-root path /corporate-network /corporate-network/
   handle @network-root {
     uri strip_prefix /corporate-network
-    reverse_proxy contact-inbox-api:3000
+    reverse_proxy contact-inbox-api:3000 {
+      import to_upstream
+    }
   }
 
   # corporate-network contact routes (admin interface, internal only)
   @contact path /corporate-network/contact /corporate-network/contact/*
   handle @contact {
     uri strip_prefix /corporate-network/contact
-    reverse_proxy contact-inbox-api:3000
+    reverse_proxy contact-inbox-api:3000 {
+      import to_upstream
+    }
   }
 
   # corporate-network image-converter routes
   @image-converter path /corporate-network/image-converter /corporate-network/image-converter/*
   handle @image-converter {
     uri strip_prefix /corporate-network/image-converter
-    reverse_proxy image-converter-api:3000
+    reverse_proxy image-converter-api:3000 {
+      import to_upstream
+    }
   }
 
   # shared health check (contact-inbox) at root
   @health path /health
   handle @health {
-    reverse_proxy contact-inbox-api:3000
+    reverse_proxy contact-inbox-api:3000 {
+      import to_upstream
+    }
   }
 
   # Block everything else
