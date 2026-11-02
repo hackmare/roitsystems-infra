@@ -9,12 +9,17 @@ test('same-site paths are kept', () => {
   for (const p of ['/', '/corporate-network/contact/admin', '/a/b?x=1#y', '/%2F%2Fevil.example']) {
     assert.equal(safeRedirect(p, FALLBACK), p, p);
   }
+  // Dot segments that stay on this site resolve normally.
+  assert.equal(safeRedirect('/a/../b', FALLBACK), '/b');
 });
 
 test('other sites and odd values fall back', () => {
   for (const p of ['//evil.example', '/\\evil.example', 'https://evil.example', 'http:evil.example',
     '%2F%2Fevil.example', 'evil.example', '\t/evil', '\n/evil', '/\t/evil.example', '/\n/evil.example',
-    '/evil\r\n', 'javascript:alert(1)', '', undefined, null, 42, ['/a']]) {
+    '/evil\r\n', 'javascript:alert(1)', '', undefined, null, 42, ['/a'],
+    // dot segments that collapse to "//host" once resolved
+    '/..//evil.example', '/.//evil.example', '/%2e%2e//evil.example', '/./\\evil.example',
+    '/a/..//evil.example', '/..\\/evil.example', '/%2E//evil.example', '/.%2e//evil.example']) {
     assert.equal(safeRedirect(p, FALLBACK), FALLBACK, JSON.stringify(p));
   }
 });
