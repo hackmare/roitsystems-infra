@@ -68,7 +68,7 @@ cd roitsystems-infra
 cp .env.example .env
 nano .env          # fill in real values
 
-# Generate ADMIN_TOKEN
+# Generate SESSION_SECRET (Google sign-in: see GOOGLE_OAUTH_SETUP.md)
 openssl rand -hex 32   # paste into .env
 
 # Start
@@ -94,7 +94,7 @@ curl -X POST https://api.roitsystems.ca/api/contact \
 # Expected: {"success":true}
 
 # Admin UI
-open https://api.roitsystems.ca/admin
+open https://$API_DOMAIN/corporate-network/contact/admin   # sign in with Google
 ```
 
 ---

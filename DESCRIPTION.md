@@ -163,22 +163,21 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
 ### Image Conversion Job
 
 ```
-1. Admin UI submits job: POST /api/admin/image-jobs with file + params
-2. Fastify validates Bearer token
+1. Admin UI submits job: POST /corporate-network/image-converter/api/image-jobs, JSON with filename, base64 data, format_in, format_out and settings
+2. The image-converter API checks the admin session cookie
 3. Fastify generates transaction_id (UUID)
-4. Fastify stores file in temp location or as base64
-5. Fastify stores job doc in CouchDB: { _id: transaction_id, status: 'queued', params, filename }
-6. Fastify publishes event to NATS: { transaction_id, type: 'image.convert', params }
-7. Fastify returns 202 with transaction_id
-8. ImageMagick worker receives 'image.convert' event
-9. Worker downloads image file (from shared storage or embedded in message)
-10. Worker calls: convert input.png -format webp -quality 85 output.webp
-11. Worker encodes result as base64
-12. Worker publishes 'image.ready': { transaction_id, data: base64 }
-13. Worker updates CouchDB: { _id: transaction_id, status: 'done', data: base64, ... }
-14. Admin UI polls GET /api/admin/image-jobs/:transaction_id
-15. Frontend detects status === 'done', displays preview, shows download button
-16. User clicks download → browser decodes base64 and saves file
+4. Fastify stores job doc in CouchDB: { _id: transaction_id, status: 'queued', params, filename }
+5. Fastify publishes 'image.convert' to NATS: { transaction_id, data, params }
+6. Fastify returns 202 with transaction_id
+7. ImageMagick worker receives 'image.convert' event
+8. Worker takes the base64 image from the message
+9. Worker calls: convert input.png -format webp -quality 85 output.webp
+10. Worker encodes result as base64
+11. Worker publishes 'image.ready': { transaction_id, data: base64 }
+12. Worker updates CouchDB: { _id: transaction_id, status: 'done', data: base64, ... }
+13. Admin UI polls GET /corporate-network/image-converter/api/image-jobs/:transaction_id
+14. Frontend detects status === 'done', displays preview, shows download button
+15. User clicks download → browser decodes base64 and saves file
 ```
 
 ---
@@ -203,10 +202,9 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
 ## API Design Patterns
 
 ### Authentication
-- **Bearer token** in `Authorization` header
-- Token is a 64-character hex string (256 bits)
-- No JWT — just opaque secret, validated against `ADMIN_TOKEN` env var
-- Scoped to `/api/admin/*` and `/admin` routes only
+- **Google sign-in**, limited to the accounts in `ADMIN_EMAILS`
+- An 8-hour `session` cookie signed with `SESSION_SECRET` (HMAC-SHA256); no JWT, no API tokens
+- Checked by the contact-inbox admin API and the image-converter API
 
 ### Rate Limiting
 - **Per-IP, sliding window** via @fastify/rate-limit
@@ -369,9 +367,8 @@ Used for deduplication and retry state:
 - **DigitalOcean Firewall**: Restrict SSH (port 22) to known IPs
 
 ### Authentication
-- **Admin API**: Bearer token in env var, non-guessable
+- **Admin API and pages**: Google sign-in, then a signed HttpOnly session cookie
 - **Contact form**: No auth required; rate-limiting provides DOS protection
-- **Browser admin UI**: Token stored in `sessionStorage`; sent as `Authorization` header
 
 ### Data Protection
 - **PII in logs**: Redacted by Fastify logger (`email`, `name` fields)
@@ -418,9 +415,8 @@ curl -X POST http://localhost:3000/api/contact \
   -H "Content-Type: application/json" \
   -d '{"name":"Test","email":"test@example.com","message":"Test"}'
 
-# List messages (with admin token)
-curl -H "Authorization: Bearer dev-token" \
-  http://localhost:3000/api/admin/messages
+# Admin endpoints need a browser session: sign in at
+# http://localhost:3000/auth/login, then open http://localhost:3000/admin
 ```
 
 ### Production Monitoring
