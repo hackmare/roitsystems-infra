@@ -40,3 +40,6 @@ services:
     networks:
       - corporate-backend
     restart: unless-stopped
+    # Backstop: ImageMagick on a large image can use a lot of memory; this caps
+    # the container rather than the shared host.
+    mem_limit: 512m
