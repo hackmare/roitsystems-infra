@@ -1,7 +1,9 @@
 // Smoke client for contact-inbox/api, run inside its container by run.sh.
 // Start-up gate: /health, the backing services (CouchDB databases, JetStream stream),
-// an invalid and a valid contact POST end to end, and admin routes refusing without a login.
+// an invalid and a valid contact POST end to end, admin routes refusing without a
+// valid admin session, and post-login redirects staying on this site.
 import { connect } from '/app/node_modules/nats/index.js';
+import { createHmac } from 'crypto';
 
 const API = 'http://localhost:3000';
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT || 20) * 1000;
@@ -66,6 +68,41 @@ check(!!event, 'contact.messages.new event published to JetStream with the messa
 
 const a = await fetch(`${API}/api/admin/messages`, { redirect: 'manual' });
 check(a.status >= 300 && a.status < 500 && a.status !== 404, `GET /api/admin/messages without login → ${a.status}, refused`);
+
+// Admin sessions: cookies signed like auth.ts does, with the container's dummy
+// SESSION_SECRET (this process shares its environment) or with wrong values.
+const cookie = (secret, email, exp = Date.now() + 600_000) => {
+  const b64 = Buffer.from(JSON.stringify({ email, exp })).toString('base64url');
+  return `session=${b64}.${createHmac('sha256', secret).update(b64).digest('base64url')}`;
+};
+const SECRET = process.env.SESSION_SECRET;
+const ADMIN = 'smoke@example.invalid';
+const admin = (c) => fetch(`${API}/api/admin/messages`, { redirect: 'manual', headers: { Cookie: c } });
+const good = await admin(cookie(SECRET, ADMIN));
+check(good.status === 200, `GET /api/admin/messages with a valid admin session → ${good.status}, expect 200`);
+for (const [what, c] of [
+  ['signed with another secret', cookie('f'.repeat(64), ADMIN)],
+  ['signed with an empty secret', cookie('', ADMIN)],
+  ['for a non-admin email', cookie(SECRET, 'other@example.invalid')],
+  ['for an empty email', cookie(SECRET, '')],
+  ['expired', cookie(SECRET, ADMIN, Date.now() - 1000)],
+  ['with a truncated signature', cookie(SECRET, ADMIN).slice(0, -1)],
+]) {
+  const r = await admin(c);
+  check(r.status === 403, `GET /api/admin/messages with a session ${what} → ${r.status}, expect 403`);
+}
+
+// Post-login redirect: /auth/login stores `next` in a cookie only if it stays on this site.
+const storedNext = async (next) => {
+  const r = await fetch(`${API}/auth/login?next=${encodeURIComponent(next)}`, { redirect: 'manual' });
+  const c = r.headers.getSetCookie().find((x) => x.startsWith('oauth_next='));
+  return c && decodeURIComponent(c.split(';')[0].slice('oauth_next='.length));
+};
+check(await storedNext('/corporate-network/contact/admin?tab=1') === '/corporate-network/contact/admin?tab=1', 'login keeps a same-site next');
+for (const next of ['//evil.example', '/..//evil.example', 'https://evil.example', '/\\evil.example']) {
+  const kept = await storedNext(next);
+  check(kept === '/corporate-network/contact/admin', `login replaces next=${next} with the admin page (got ${kept})`);
+}
 
 await nc.close();
 console.log(failures ? `${failures} check(s) failed` : 'all checks passed');
