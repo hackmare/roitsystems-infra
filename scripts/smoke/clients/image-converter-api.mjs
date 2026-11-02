@@ -78,6 +78,18 @@ check([302, 401, 403].includes(submit.status), `POST /api/image-jobs without log
 const status = await fetch(`${API}/api/image-jobs/smoke`, { redirect: 'manual' });
 check([302, 401, 403].includes(status.status), `GET /api/image-jobs/:id without login → ${status.status}, refused`);
 
+// Formats: only those imagemagick-service converts are accepted.
+for (const [what, body, expect] of [
+  ['format_out tiff', { format_out: 'tiff' }, 400],
+  ['format_in svg', { format_in: 'svg', format_out: 'png' }, 400],
+  ['format_out svg', { format_out: 'svg' }, 202],
+]) {
+  const r = await submitJob(body);
+  check(r.status === expect, `POST /api/image-jobs (${what}) → ${r.status}, expect ${expect}`);
+}
+const html = await (await fetch(`${API}/convert`)).text();
+check(!/value="tiff"/i.test(html) && /value="svg"/.test(html), 'admin page offers no TIFF output');
+
 // The listener: queued jobs become done / error when image.ready arrives.
 const js = nc.jetstream();
 for (const [id, event, expect] of [
