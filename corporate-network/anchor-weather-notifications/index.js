@@ -56,7 +56,10 @@ async function sendEmail(payload) {
   }
   const { error } = await resend.emails.send(params);
   if (error) {
-    throw new Error(`Resend error: ${JSON.stringify(error)}`);
+    // Resend's message can quote the addresses it rejected: keep only its kind.
+    const failure = new Error('Resend error');
+    failure.resend = { name: error.name, statusCode: error.statusCode };
+    throw failure;
   }
   log('info', 'Email sent', { type: payload.type, hasCc: !!cc_email });
 }
@@ -89,7 +92,7 @@ async function main() {
     try {
       await sendEmail(payload);
     } catch (e) {
-      log('error', 'Failed to send email', { error: String(e), type: payload.type });
+      log('error', 'Failed to send email', { error: e.resend ? 'Resend error' : e.name, ...(e.resend || {}), type: payload.type });
     }
   }
 

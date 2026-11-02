@@ -32,7 +32,7 @@ const fake = createServer((req, res) => {
     requests.push({ method: req.method, url: req.url, auth: req.headers.authorization, json });
     const fail = json.subject === 'smoke-resend-error';
     res.writeHead(fail ? 422 : 200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(fail ? { statusCode: 422, name: 'validation_error', message: 'smoke' } : { id: `smoke-${requests.length}` }));
+    res.end(JSON.stringify(fail ? { statusCode: 422, name: 'validation_error', message: 'Invalid `to` field: smoke@example.invalid' } : { id: `smoke-${requests.length}` }));
   });
 });
 await new Promise((r) => fake.listen(8025, '127.0.0.1', r));
