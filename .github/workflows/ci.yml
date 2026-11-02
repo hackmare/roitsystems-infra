@@ -1,4 +1,5 @@
-# CI for the Node services: install, build, unit tests, build the image (never pushed), and the smoke test where a
+# CI: the compose files validate against .env.example; and for the Node services: install, build, unit tests,
+# build the image (never pushed), and the smoke test where a
 # service has one (scripts/smoke/run.sh). Pull requests and pushes to main (so main's builds are checked):
 # no secrets, read-only token, nothing deployed.
 name: CI
@@ -16,6 +17,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  compose:
+    # DEPLOY.md's gate 2: every compose file parses, and every variable it uses is listed in .env.example
+    # (checked against that file, so CI needs no secrets).
+    name: compose config
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate the compose files against .env.example
+        run: |
+          fail=0
+          for f in $(git ls-files '*docker-compose.yml'); do
+            d=$(dirname "$f")
+            if ! out=$(docker compose --project-directory "$d" -f "$f" --env-file .env.example config --quiet 2>&1); then
+              echo "::error file=$f::docker compose config failed"; echo "$out"; fail=1; continue
+            fi
+            if echo "$out" | grep -q 'variable is not set'; then
+              echo "::error file=$f::uses variables .env.example doesn't list"; echo "$out" | grep 'variable is not set'; fail=1
+            else
+              echo "ok  $f"
+            fi
+          done
+          exit $fail
+
   node:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
