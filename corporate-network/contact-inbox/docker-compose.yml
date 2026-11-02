@@ -1,11 +1,19 @@
 version: '3.8'
 
+# Logs go to the host's journal, which keeps them 30 days (infrastructure/journald/,
+# see DEPLOY.md). Each line is tagged with the container's name; `docker logs` still works.
+x-logging: &journald
+  driver: journald
+  options:
+    tag: "{{.Name}}"
+
 networks:
   corporate-backend:
     external: true
 
 services:
   contact-inbox-api:
+    logging: *journald
     build: ./api
     container_name: contact-inbox-api
     environment:
@@ -31,6 +39,7 @@ services:
     restart: unless-stopped
 
   contact-inbox-worker:
+    logging: *journald
     build: ./worker
     container_name: contact-inbox-worker
     environment:
@@ -48,6 +57,7 @@ services:
     restart: unless-stopped
 
   contact-inbox-notification:
+    logging: *journald
     build: ./notification-service
     container_name: contact-inbox-notification
     environment:

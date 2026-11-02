@@ -194,6 +194,48 @@ If a check fails, roll back (see [Rollback](#rollback)).
 - Optionally later, a manually started deploy workflow that requires
   approval and uses a key restricted to `deploy.sh`.
 
+## Log retention (30 days)
+
+Every container logs to the host's journal (the `journald` logging driver, set in
+each `docker-compose.yml` and tagged with the container's name). The journal
+keeps nothing older than 30 days, so request logs and the visitor addresses in
+them are kept 30 days at most. This applies to the host's own logs (sshd,
+fail2ban and the rest) too.
+
+Size-based Docker log options (`max-size`, `max-file`) can't promise that: a
+quiet service would keep the same few megabytes for months.
+
+**Setting it up (once, before deploying the compose change):**
+
+```bash
+install -D -m 0644 infrastructure/journald/30-retention.conf /etc/systemd/journald.conf.d/30-retention.conf
+systemctl restart systemd-journald
+systemd-analyze cat-config systemd/journald.conf | grep -E '^(Storage|MaxRetentionSec|MaxFileSec|SystemMaxUse)='
+ls -d /var/log/journal && journalctl --disk-usage
+```
+
+`infrastructure/journald/30-retention.conf` sets:
+- `Storage=persistent`, so logs survive a reboot;
+- `MaxRetentionSec=30day`, with `MaxFileSec=1day`: journald deletes whole files,
+  so it starts one a day;
+- `SystemMaxUse=2G`.
+
+**Rolling out the compose change:** a new logging driver recreates every
+container of a target on its next deploy, and the old Docker log files go with
+the old containers.
+1. Deploy `image-converter` first. Then check that
+   `docker logs --tail 5 image-converter-api` and
+   `journalctl CONTAINER_NAME=image-converter-api -n 5` both show its lines.
+2. Then `contact-inbox`.
+3. Then `infrastructure`. This recreates Caddy, NATS and CouchDB. It needs
+   `--allow-caddy-restart` and a quiet moment, since Caddy and NATS serve
+   anchor-weather too. Back up CouchDB first.
+4. anchor-weather-notifications isn't a `deploy.sh` target. Its compose file is
+   updated too, and takes effect wherever it's deployed.
+
+To read a container's logs: `docker logs <container>`, or
+`journalctl CONTAINER_NAME=<container>` (add `--since "2 days ago"` and so on).
+
 ## Configuration Details
 
 ### Required Variables

@@ -1,5 +1,12 @@
 version: '3.8'
 
+# Logs go to the host's journal, which keeps them 30 days (infrastructure/journald/,
+# see DEPLOY.md). Each line is tagged with the container's name; `docker logs` still works.
+x-logging: &journald
+  driver: journald
+  options:
+    tag: "{{.Name}}"
+
 networks:
   corporate-backend:
     name: corporate-backend
@@ -7,6 +14,7 @@ networks:
 
 services:
   caddy:
+    logging: *journald
     image: caddy:2
     restart: unless-stopped
     ports:
@@ -26,6 +34,7 @@ services:
       - couchdb
 
   nats:
+    logging: *journald
     image: nats:2
     restart: unless-stopped
     command: ["-c", "/etc/nats/nats.conf"]
@@ -58,6 +67,7 @@ services:
       - "127.0.0.1:4222:4222"
 
   couchdb:
+    logging: *journald
     image: couchdb:3
     restart: unless-stopped
     environment:

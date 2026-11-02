@@ -1,11 +1,19 @@
 version: '3.8'
 
+# Logs go to the host's journal, which keeps them 30 days (infrastructure/journald/,
+# see DEPLOY.md). Each line is tagged with the container's name; `docker logs` still works.
+x-logging: &journald
+  driver: journald
+  options:
+    tag: "{{.Name}}"
+
 networks:
   corporate-backend:
     external: true
 
 services:
   anchor-weather-notifications:
+    logging: *journald
     build: .
     container_name: anchor-weather-notifications
     environment:
