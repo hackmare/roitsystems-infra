@@ -12,6 +12,20 @@ if (!RESEND_API_KEY) {
   process.exit(1);
 }
 
+// The Resend SDK sends the API key to RESEND_BASE_URL when it is set. It must be
+// Resend's own API unless RESEND_ALLOW_TEST_BASE_URL=1, which only the smoke test sets.
+const RESEND_BASE_URL = process.env.RESEND_BASE_URL;
+if (RESEND_BASE_URL && process.env.RESEND_ALLOW_TEST_BASE_URL !== '1') {
+  let origin = null;
+  try {
+    origin = new URL(RESEND_BASE_URL).origin;
+  } catch {}
+  if (origin !== 'https://api.resend.com') {
+    console.error('[anchor-weather-notifications] RESEND_BASE_URL must be https://api.resend.com — exiting');
+    process.exit(1);
+  }
+}
+
 const resend = new Resend(RESEND_API_KEY);
 const sc = StringCodec();
 
