@@ -174,7 +174,7 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
 9. Worker calls: convert input.png -format webp -quality 85 output.webp
 10. Worker encodes result as base64
 11. Worker publishes 'image.ready': { transaction_id, data: base64 }
-12. Worker updates CouchDB: { _id: transaction_id, status: 'done', data: base64, ... }
+12. The image-converter API's image.ready listener updates CouchDB: { _id: transaction_id, status: 'done', data: base64, ... }
 13. Admin UI polls GET /corporate-network/image-converter/api/image-jobs/:transaction_id
 14. Frontend detects status === 'done', displays preview, shows download button
 15. User clicks download → browser decodes base64 and saves file
