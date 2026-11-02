@@ -247,6 +247,8 @@ Logs are written to Docker's JSON log driver by default. For persistent log ship
 
 # Check NATS stream info (the nats image has no shell or CLI, so use a throwaway
 # nats-box container on the internal network, with a NATS user from nats.conf)
-docker run --rm --network corporate-backend natsio/nats-box:0.17.0 \
-  nats -s nats://nats:4222 --user <nats user> --password <its password> stream info CONTACT_MESSAGES
+read -rs NATS_PASSWORD && export NATS_PASSWORD     # not echoed, not in the history
+docker run --rm --network corporate-backend -e NATS_USER=<nats user> -e NATS_PASSWORD \
+  natsio/nats-box:0.17.0 nats -s nats://nats:4222 stream info CONTACT_MESSAGES
+unset NATS_PASSWORD
 ```
