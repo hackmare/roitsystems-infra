@@ -20,7 +20,9 @@ Edit `.env` and set:
 - `API_DOMAIN` — your public domain (e.g., `api.roitsystems.ca`)
 - `CADDY_EMAIL` — email for Let's Encrypt certificate renewal
 - `COUCHDB_USER` and `COUCHDB_PASSWORD` — strong credentials
-- `ADMIN_TOKEN` — generate with `openssl rand -hex 32`
+- `SESSION_SECRET` — signs admin sessions; at least 32 characters, generate with `openssl rand -hex 32`
+- `ADMIN_EMAILS` — comma-separated Google accounts allowed into the admin pages
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` — Google sign-in for the admin pages
 - `CLAUDE_API_KEY` — from console.anthropic.com
 - `RESEND_API_KEY` — from resend.com
 - All other secrets
@@ -90,10 +92,90 @@ ssh root@<droplet-ip>
 
 cd /root/roitsystems-infra
 
-# Preview, then deploy (the script does its own git pull)
-./deploy.sh --dry-run
-./deploy.sh
+# Preview, then deploy one target (the script does its own git pull)
+./deploy.sh --dry-run contact-inbox
+./deploy.sh contact-inbox
 ```
+
+Follow the release process below for every production deploy.
+
+## Release Process
+
+Production deploys are manual, by one person, one target at a time.
+(`.github/workflows/deploy.yml` has no credentials configured and does not
+deploy anything.)
+
+### Before deploying (gates)
+
+Don't start unless all of these hold:
+
+1. **CI is green on the commit you will deploy.** The CI workflow
+   (`.github/workflows/ci.yml`) runs on every pull request and every push to
+   `main`. For each Node service it installs from the lockfile, builds, runs
+   the unit tests where there are any, builds the Docker image, and runs its
+   smoke test. Check the run for the `main` commit on GitHub's Actions tab.
+2. **Compose files validate:** `docker compose config --quiet` for each
+   target (CI doesn't check this yet).
+3. **The services start.** CI's smoke tests (`scripts/smoke/run.sh`) start
+   each image against throwaway NATS and CouchDB and check it: for
+   contact-inbox's API, `/health`, the contact route (invalid and valid
+   posts), and admin routes refusing forged or missing sessions. A failed
+   smoke test is a hard stop for that service. To rerun one locally:
+
+   ```bash
+   docker build -t local/contact-inbox-api corporate-network/contact-inbox/api
+   IMAGE=local/contact-inbox-api scripts/smoke/run.sh contact-inbox-api
+   ```
+
+   `scripts/smoke/run.sh --list` shows the services that have a smoke test.
+4. **Session settings are present.** contact-inbox's API and
+   image-converter's API refuse to start unless `SESSION_SECRET` is at least
+   32 characters and `ADMIN_EMAILS` names at least one admin. Both services
+   read the same `SESSION_SECRET`. Check the server's `.env` without printing
+   the values:
+
+   ```bash
+   # Quotes and a trailing " # comment" aren't part of the value, as in Compose.
+   sed -n 's/^SESSION_SECRET=//p' .env | sed 's/[[:space:]]\{1,\}#.*//' | tr -d "\"'\n" | wc -c   # 32 or more
+   sed -n 's/^ADMIN_EMAILS=//p' .env | sed 's/[[:space:]]\{1,\}#.*//' | tr -d "\"'" | tr ',' '\n' | grep -c '[^[:space:]]'  # 1 or more
+   ```
+5. **Open PRs touching the target** are merged or deliberately left for a
+   later deploy.
+6. **The server checkout is clean.** `git status` shows no edits to tracked
+   files, and `git stash list` shows nothing you need. (`deploy.sh` refuses
+   a dirty tree anyway.)
+
+### Deploying
+
+1. Note the commit currently deployed: `git log --oneline -1`.
+2. `./deploy.sh --dry-run <target>` and read which containers it would
+   recreate. If Caddy is listed, stop and plan a quiet window.
+3. `./deploy.sh <target>`. Do one target at a time, in the order
+   `infrastructure`, `contact-inbox`, `image-converter`, and only those that
+   changed.
+4. Run the checks below before moving on to the next target.
+
+### After deploying (checks)
+
+1. `deploy.sh` reports the anchor-weather containers unchanged. Any
+   difference means stop and investigate.
+2. Every recreated container is up and not restarting (`docker ps`; look for
+   a rising restart count). A service that refuses its settings at start-up
+   (gate 4) exits and restarts in a loop; its log says which setting.
+3. The [health checks](#health-checks) answer, including the public sites
+   served through Caddy.
+4. A few minutes of `docker logs` for the recreated containers show no new
+   errors.
+
+If a check fails, roll back (see [Rollback](#rollback)).
+
+### Planned improvements
+
+- `docker compose config` in CI, so gate 2 is automatic too.
+- Images tagged by commit, with the last two kept, so a rollback needs no
+  rebuild.
+- Optionally later, a manually started deploy workflow that requires
+  approval and uses a key restricted to `deploy.sh`.
 
 ## Configuration Details
 
@@ -105,7 +187,9 @@ cd /root/roitsystems-infra
 | `CADDY_EMAIL` | TLS certificate email | `m.oger@roitsystems.ca` |
 | `COUCHDB_USER` | Database admin | `admin` |
 | `COUCHDB_PASSWORD` | Database password | `[strong password]` |
-| `ADMIN_TOKEN` | API auth token | `[32-byte hex]` |
+| `SESSION_SECRET` | Signs admin sessions (contact-inbox and image-converter APIs; at least 32 characters, or they won't start) | `[openssl rand -hex 32]` |
+| `ADMIN_EMAILS` | Google accounts allowed into the admin pages (at least one, or the APIs won't start) | `admin@example.com` |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google sign-in for the admin pages | From Google Cloud Console |
 | `CLAUDE_API_KEY` | Claude API access | From console.anthropic.com |
 | `RESEND_API_KEY` | Email service | From resend.com |
 | `NOTIFICATION_EMAIL` | Recipient email | `m.oger@roitsystems.ca` |
@@ -228,35 +312,46 @@ docker-compose down
 
 ## Health Checks
 
-Once deployed, test these endpoints:
+Once deployed, test these endpoints. None of them stores anything or sends
+email.
 
 ```bash
-# Health check (should return 200)
-curl https://api.roitsystems.ca/health
+# Health checks (should return 200): contact-inbox's API, then image-converter's
+curl https://pubapi.roitsystems.ca/health
+curl https://pubapi.roitsystems.ca/corporate-network/image-converter/health
 
-# Contact form submission (should return 202)
-curl -X POST https://api.roitsystems.ca/corporate-network/contact \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Test","email":"test@example.com","message":"Hi"}'
+# Contact route is up: an invalid submission is refused (should return 400).
+# A valid one would store a real message and send a notification email.
+curl -s -o /dev/null -w '%{http_code}\n' -X POST https://pubapi.roitsystems.ca/api/contact \
+  -H "Content-Type: application/json" -d '{}'
 
-# Contact admin (requires ADMIN_TOKEN)
-curl -H "Authorization: Bearer $ADMIN_TOKEN" \
-  https://api.roitsystems.ca/corporate-network/contact/admin
-
-# Image converter admin (requires ADMIN_TOKEN)
-curl -H "Authorization: Bearer $ADMIN_TOKEN" \
-  https://api.roitsystems.ca/corporate-network/image-converter/convert
+# Admin API without a session redirects to Google sign-in (should return 302)
+curl -s -o /dev/null -w '%{http_code}\n' https://pubapi.roitsystems.ca/api/admin/messages
 ```
+
+The admin pages need a Google sign-in with an `ADMIN_EMAILS` account; open
+them in a browser:
+
+- https://pubapi.roitsystems.ca/corporate-network/contact/admin
+- https://pubapi.roitsystems.ca/corporate-network/image-converter/convert
 
 ## Rollback
 
-To revert to a previous version:
+`deploy.sh` always fast-forwards to `origin/main` before deploying, so
+checking out an older commit on the server and running it just deploys
+`main` again. Roll back through `main` instead:
 
-```bash
-git log --oneline | head -5
-git checkout [commit-hash]
-./deploy.sh
-```
+1. Revert the bad change on `main` (`git revert <commit>` in a PR, then
+   merge).
+2. On the server: `./deploy.sh --dry-run <target>`, then
+   `./deploy.sh <target>`.
+3. Run the [checks](#after-deploying-checks) again.
+
+This rebuilds the images, so it takes a few minutes. Once images are tagged
+by commit (see [Planned improvements](#planned-improvements)), a rollback
+will switch the service back to the previous tag without a rebuild.
+`deploy.sh` never prunes images, so kept tags stay available. Either way,
+go through `deploy.sh`, not ad-hoc `docker` commands.
 
 ## Next Steps
 
