@@ -6,6 +6,9 @@ WORKDIR /app
 # No SVG coder: SVG output is built in index.js, and SVG input is not accepted.
 RUN apk add --no-cache imagemagick imagemagick-jpeg imagemagick-webp
 
+# Restrictive ImageMagick policy: only the coders above, resource limits.
+COPY policy.xml /etc/ImageMagick-7/policy.xml
+
 # Copy package files
 COPY package*.json ./
 

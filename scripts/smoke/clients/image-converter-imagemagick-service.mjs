@@ -1,9 +1,9 @@
 // Smoke client for imagemagick-service, run inside its container by run.sh.
-// Checks each output format's magic bytes, each input format, the error replies,
-// and that no temp files are left behind.
+// Checks the ImageMagick policy, each output format's magic bytes, each input
+// format, the error replies, and that no temp files are left behind.
 import { connect } from '/app/node_modules/nats/index.js';
 import { execFileSync } from 'child_process';
-import { readFileSync, readdirSync } from 'fs';
+import { existsSync, readdirSync, rmSync, writeFileSync } from 'fs';
 
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT || 20) * 1000;
 const enc = (o) => new TextEncoder().encode(JSON.stringify(o));
@@ -13,15 +13,30 @@ const check = (ok, what) => {
   if (!ok) failures++;
 };
 
-// Test inputs, made with the image's own ImageMagick (40x30 solid colour).
-const input = {};
-for (const f of ['png', 'jpg', 'webp', 'gif']) {
-  try {
-    execFileSync('magick', ['-size', '40x30', 'xc:#3366cc', `/tmp/smoke-in.${f}`], { stdio: 'pipe' });
-    input[f] = readFileSync(`/tmp/smoke-in.${f}`).toString('base64');
-  } catch {
-    check(false, `make a ${f} test input (ImageMagick has no ${f} coder)`);
-  }
+// Test inputs: 40x30 solid-colour images, embedded because the policy denies
+// ImageMagick's generator coders.
+const input = {
+  png: 'iVBORw0KGgoAAAANSUhEUgAAACgAAAAeAQMAAABkE86eAAAAA1BMVEUzZswgIiSpAAAADElEQVQI12NgGHoAAAC0AAFecZC/AAAAAElFTkSuQmCC',
+  jpg: '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCAAeACgDAREAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFgEBAQEAAAAAAAAAAAAAAAAAAAcI/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8Al7UCSAAAAAAAAAAAAAAAAAAAP//Z',
+  webp: 'UklGRkoAAABXRUJQVlA4ID4AAABwAwCdASooAB4APpFGnkslo6KhpWgAsBIJZwDMDoAAMavkU0AA/ujXH/43jwK8l2V//dF9qKl6JVcObyzoAA==',
+  gif: 'R0lGODlhKAAeAPAAADNmzAAAACH5BAAAAAAALAAAAAAoAB4AAAIhhI+py+0Po5y02ouz3rz7D4biSJbmiabqyrbuC8fyTHMFADs=',
+};
+const mvg = Buffer.from('push graphic-context\nviewbox 0 0 10 10\npop graphic-context\n');
+const text = Buffer.from('hello, this is not an image\n');
+
+// Policy: ours is the one in force, and content-sniffed coders are refused.
+const policy = execFileSync('magick', ['-list', 'policy'], { encoding: 'utf8' });
+check(policy.includes('/etc/ImageMagick-7/policy.xml') && /pattern: \{PNG,JPEG,WEBP,GIF\}/.test(policy)
+  && /name: memory\s+value: 256MiB/.test(policy), 'policy.xml active (coder allowlist, memory limit)');
+writeFileSync('/tmp/smoke-mvg.png', mvg);
+writeFileSync('/tmp/smoke-text.txt', text);
+// Each of these succeeds under ImageMagick's default policy.
+for (const src of ['mvg:/tmp/smoke-mvg.png', 'text:/tmp/smoke-text.txt', 'xc:red', '@/tmp/smoke-text.txt']) {
+  rmSync('/tmp/smoke-out.png', { force: true });
+  let failed = false;
+  try { execFileSync('magick', [src, '/tmp/smoke-out.png'], { stdio: 'pipe' }); }
+  catch { failed = true; }
+  check(failed && !existsSync('/tmp/smoke-out.png'), `policy refuses ${src}`);
 }
 
 const isPng = (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
@@ -55,14 +70,17 @@ const cases = [
   { id: 'err-unsupported-out', in: 'png', out: 'tiff', expect: 'error' },
   { id: 'err-svg-input', in: 'svg', out: 'png', expect: 'error', data: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64') },
   { id: 'err-path-in-format', in: 'png', out: '../x', expect: 'error' },
-  { id: 'err-corrupt-input', in: 'png', out: 'jpg', expect: 'error', data: Buffer.from('not an image').toString('base64') },
+  { id: 'err-corrupt-input', in: 'png', out: 'jpg', expect: 'error', data: text.toString('base64') },
+  { id: 'err-mvg-as-png', in: 'png', out: 'png', expect: 'error', data: mvg.toString('base64') },
+  { id: 'clamped-params', in: 'png', out: 'png', expect: 'ok',
+    params: { width: 20, lockAspectRatio: true, density: 99999, quality: 500, rotate: -5, blur: 'x', colorspace: 'bogus', background: 'url:x' } },
   { id: 'err-missing-fields', in: 'png', out: '', expect: 'error' },
 ];
 const sent = cases.filter((c) => c.data || input[c.in]);
 for (const c of sent) {
   nc.publish('image.convert', enc({
     transaction_id: c.id, format_in: c.in, format_out: c.out,
-    data: c.data ?? input[c.in], params: { width: 20, lockAspectRatio: true },
+    data: c.data ?? input[c.in], params: c.params ?? { width: 20, lockAspectRatio: true },
   }));
 }
 
@@ -77,7 +95,9 @@ for (const c of cases) {
     const out = r.success ? Buffer.from(r.data, 'base64') : Buffer.alloc(0);
     check(r.success === true && magic[c.out](out), `${c.id}: success, ${out.length} bytes, ${c.out} signature${r.success ? '' : ` (error: ${r.error})`}`);
   } else {
-    check(r.success === false && typeof r.error === 'string', `${c.id}: error reply with transaction_id (${r.error})`);
+    // Our own validation messages are specific; anything ImageMagick reports is a fixed text.
+    const fixed = !c.id.startsWith('err-corrupt') && !c.id.startsWith('err-mvg') || r.error === 'Conversion failed';
+    check(r.success === false && typeof r.error === 'string' && fixed, `${c.id}: error reply with transaction_id (${r.error})`);
   }
 }
 check(!replies.has('(none)'), 'no reply without a transaction_id');
