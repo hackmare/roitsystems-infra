@@ -10,7 +10,7 @@
 
 If you discover a security vulnerability in this project, please report it responsibly:
 
-**Contact:** security@roitsystems.ca (or info@roitsystems.ca if security alias not yet configured)
+**Contact:** security@roitsystems.ca
 
 Please include:
 - A description of the vulnerability and its potential impact
@@ -23,5 +23,7 @@ Please do **not** open a public GitHub issue for security vulnerabilities.
 
 ## Scope
 
-This repository covers the API server, worker, message broker (NATS), datastore (CouchDB),
-and reverse proxy (Caddy) that form the backend infrastructure for roitsystems.ca.
+This repository covers the backend infrastructure for roitsystems.ca: the reverse proxy
+(Caddy), message broker (NATS) and datastore (CouchDB) in `infrastructure/`; the contact
+inbox (API, worker and notification service) and the image converter (API and ImageMagick
+service) in `corporate-network/`; and the anchor-weather notification relay.

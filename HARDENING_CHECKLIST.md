@@ -1,96 +1,71 @@
 # Hardening Checklist
 
-Items marked ✅ are verified completed. Items marked 🔲 require manual action.
-Items marked ⚠️ are known risks with documented mitigations or upgrade paths.
+Things to confirm before a deployment of this stack goes into production, and
+again after any change to the host, the Caddyfile or the compose files.
 
 ## Secrets and Configuration
 
-- ✅ No secrets committed to git — `.gitignore` excludes `.env` and all variants
-- ✅ `.env.example` contains only placeholder values with generation instructions
-- 🔲 `SESSION_SECRET` generated with `openssl rand -hex 32` in production
-- 🔲 `ADMIN_EMAILS` lists only the intended admins in production
-- 🔲 `COUCHDB_PASSWORD` is a unique, strong, non-dictionary value in production
-- 🔲 `CORS_ORIGINS` set to exact production domain only
-- 🔲 `LOG_LEVEL` set to `info` (not `debug`) in production
+- [ ] No secrets are committed to git; `.gitignore` excludes `.env` and its variants
+- [ ] `.env.example` holds only placeholder values
+- [ ] Each project's `.env` (`infrastructure/`, `corporate-network/contact-inbox/`, `corporate-network/image-converter/`) is readable only by the deploy user
+- [ ] `SESSION_SECRET` is generated with `openssl rand -hex 32`, and the two APIs share it
+- [ ] `ADMIN_EMAILS` lists only the intended admins
+- [ ] `COUCHDB_PASSWORD` is unique and strong
+- [ ] `CORS_ORIGINS` names the exact production site only
+- [ ] `LOG_LEVEL` is `info`, not `debug`
 
-## Network and Infrastructure
+## Network and Host
 
-- ✅ Only Caddy binds to host ports (80, 443)
-- ✅ CouchDB has no host-bound ports — unreachable from the Internet
-- ✅ NATS is bound to `127.0.0.1:4222` only (for on-host daemons that can't join the Docker network) — unreachable from the Internet or any other host
-- ✅ Docker networks: `proxy` (Caddy↔API) and `backend` (all internal services) are separated
-- 🔲 Firewall: only ports 22, 80, 443 open on the droplet/host
-- 🔲 SSH: key-only authentication, root login disabled
-- 🔲 Automatic OS security updates enabled
-- 🔲 Confirm CouchDB port 5984 not accessible from outside Docker (`curl http://HOST:5984` should fail)
-- 🔲 Confirm NATS port 4222 is bound to 127.0.0.1 only (`curl http://HOST:4222` from another machine should fail; `curl http://127.0.0.1:4222` on the droplet itself should succeed)
+- [ ] Only Caddy publishes ports to the outside (80 and 443); anything else bound on the host uses loopback only
+- [ ] Internal services (CouchDB, NATS, the APIs and workers) aren't reachable from outside the host
+- [ ] The firewall allows only what's needed
+- [ ] SSH accepts keys only (no password logins)
+- [ ] Automatic OS security updates are on
 
 ## TLS / HTTPS
 
-- ✅ Caddy manages TLS via Let's Encrypt automatically
-- ✅ HTTP → HTTPS redirect is Caddy's default behaviour
-- ✅ HSTS header set: `max-age=63072000; includeSubDomains; preload` (2 years)
-- 🔲 After HSTS is stable in production, consider submitting to the HSTS preload list
+- [ ] Caddy obtains and renews certificates automatically
+- [ ] HTTP redirects to HTTPS
+- [ ] HSTS is sent
 
 ## HTTP Security Headers (Caddy)
 
-- ✅ `X-Content-Type-Options: nosniff`
-- ✅ `X-Frame-Options: DENY`
-- ✅ `Strict-Transport-Security` with 2-year max-age and preload
-- ✅ `Referrer-Policy: strict-origin-when-cross-origin`
-- ✅ `Permissions-Policy` restricting geolocation, microphone, camera, payment, usb
-- ✅ `Content-Security-Policy` for admin SPA
-- ✅ `Server` and `X-Powered-By` headers removed
-- ✅ Deprecated `X-XSS-Protection` removed (CSP provides better protection)
+- [ ] `X-Content-Type-Options: nosniff`
+- [ ] `X-Frame-Options: DENY`
+- [ ] `Strict-Transport-Security`
+- [ ] `Referrer-Policy: strict-origin-when-cross-origin`
+- [ ] `Permissions-Policy` restricting device features
+- [ ] `Content-Security-Policy` on the admin pages
+- [ ] `Server` and `X-Powered-By` removed
 
-## API Hardening
+## API
 
-- ✅ CORS locked to `CORS_ORIGINS` (default: `https://roitsystems.ca`)
-- ✅ Rate limiting: 10 requests / 15 minutes per IP on `POST /api/contact`
-- ✅ Rate limiting: 30 requests / 15 minutes per IP on admin API endpoints
-- ✅ Input validation: all fields validated and length-capped via Zod
-- ✅ Honeypot field (`hp`) catches naive bots without CAPTCHA
-- ✅ PII redacted from structured logs (email, name fields)
-- ✅ Admin access is Google sign-in, limited to `ADMIN_EMAILS`
-- ✅ Session cookie signatures are checked in constant time (timing-safe)
-- ✅ The APIs refuse to start without a `SESSION_SECRET` of 32+ characters and at least one `ADMIN_EMAILS` entry
-- ✅ `/auth/login` returns 503 when Google sign-in is not configured
-- ✅ CouchDB error internals (paths, response bodies) not exposed to API callers
-- ✅ CouchDB and webhook fetches have 10-second timeouts
+- [ ] Admin pages and APIs need Google sign-in, limited to `ADMIN_EMAILS`
+- [ ] The APIs refuse to start without a 32+ character `SESSION_SECRET` and at least one admin
+- [ ] Contact submissions and admin endpoints are rate-limited per client
+- [ ] Input is validated and length-capped
+- [ ] Personal data (names, email addresses) and the `Authorization` header are redacted from logs
+- [ ] Database errors reach callers without internal detail
 
-## Container and Runtime
+## Containers
 
-- ✅ Both `api` and `worker` Dockerfiles use `node:20-alpine` (minimal base image)
-- ✅ Both images run as `USER node` (non-root)
-- ✅ `NODE_ENV=production` set in both images
-- ✅ Dev dependencies excluded from production images (`--omit=dev`)
-- ✅ `npm ci` used in Dockerfiles for deterministic, lockfile-respecting installs
-- ✅ Healthcheck defined in both `api` Dockerfile and `docker-compose.yml`
-- ✅ `docker-compose.yml` uses `depends_on: condition: service_healthy` for startup ordering
-- ✅ Graceful shutdown on both SIGTERM and SIGINT in api and worker
+- [ ] Images are built from pinned Node LTS base images; Dependabot proposes updates
+- [ ] Containers run as a non-root user
+- [ ] Production images exclude dev dependencies and install with `npm ci`
+- [ ] Services shut down cleanly on SIGTERM and SIGINT
 
 ## Dependencies
 
-- ✅ `npm ci` enforces lockfile integrity in Docker builds
-- ✅ `audit=true` in `.npmrc` for all packages
-- ✅ `npm run audit` script available in all packages
-- ⚠️ **fastify <=4.x has known CVEs** (GHSA-mrq3-vjjr-p77c, GHSA-jx2c-rxcm-jvmq, GHSA-444r-cwp2-x5xf).
-  Fix requires upgrading to fastify v5 (breaking change). See SECURITY_HARDENING_NOTES.md.
-- ⚠️ **uuid <14.0.0** has a moderate CVE (GHSA-w5hq-g745-h8pq, buffer bounds check in v3/v5/v6).
-  The API uses `uuidv4()` without a buffer argument so is not directly affected.
-  Fix requires upgrading to uuid@14 (breaking change). See SECURITY_HARDENING_NOTES.md.
+- [ ] `npm ci` installs from the lockfile in every image
+- [ ] `npm audit` is clean, or each finding is understood
+- [ ] Dependabot pull requests are reviewed and merged
 
 ## NATS
 
-- ✅ No public exposure — internal network only
-- ✅ JetStream with file-backed storage and 30-day retention
-- ✅ Durable consumer with explicit acks and max 5 redeliveries
-- ✅ 5-second NAK backoff on processing failure
-- 🔲 If attack surface grows (multi-tenant, external clients), add NATS `authorization {}` block
+- [ ] NATS isn't published outside the host
+- [ ] Each client connects with its own user, limited to the subjects it needs
 
 ## CouchDB
 
-- ✅ Not publicly reachable — no host-bound port
-- ✅ API authenticates over Basic Auth on the backend Docker network
-- 🔲 Backup schedule in place (see docs/operations.md)
-- 🔲 CouchDB admin UI (`/_utils`) confirmed inaccessible from outside Docker
+- [ ] CouchDB isn't published outside the host, including its admin UI (`/_utils`)
+- [ ] Backups run on a schedule and a restore has been tested (see [docs/operations.md](docs/operations.md))

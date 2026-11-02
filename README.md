@@ -83,7 +83,7 @@ browser to sign-in). A session for any other account gets `403`.
   "company": "Acme Corp",
   "subject": "AI Readiness Assessment",
   "message": "We need help with...",
-  "budget": "$15,000–$35,000",
+  "budget": "15,000–35,000",
   "timeline": "This quarter",
   "source_page": "https://roitsystems.ca/#contact",
   "timestamp": "2026-04-26T18:00:00.000Z",
