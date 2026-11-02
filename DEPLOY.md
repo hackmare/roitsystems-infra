@@ -207,24 +207,41 @@ secrets, every run stops at its first step.
 3. If you chose *deploy*, the **deploy job** waits for a second approval, then runs
    `./deploy.sh <target>`. Then do the [checks](#after-deploying-checks).
 
-The workflow's key can only run `scripts/deploy-gate.sh`. That script accepts
-exactly `dry-run <target>` or `deploy <target>`, for the three targets, and
-nothing else: no shell, no other arguments, never `--allow-caddy-restart`.
-It refuses a deploy unless a dry run of that target ran in the last 30
-minutes and `main` hasn't moved since. One dry run allows one deploy.
-`scripts/test-deploy-gate.sh` tests this, and CI runs it.
+The workflow's key can only run the deploy gate, a copy of
+`scripts/deploy-gate.sh` installed outside the checkout, so a change merged to
+`main` can't change what the key may do.
+- **What it accepts:** exactly `dry-run <target>` or `deploy <target>`, for the
+  three targets, and nothing else: no shell, no other arguments, never
+  `--allow-caddy-restart`.
+- **When it deploys:** only after a dry run of that target in the last 30
+  minutes, with `main` unmoved since. It then deploys exactly the commit the dry
+  run showed (`DEPLOY_COMMIT`), even if someone pushes in between. One dry run
+  allows one deploy.
+- **What it shows:** **the Actions log is public**, like the repository. So the
+  gate keeps `deploy.sh`'s full output in a root-only file under
+  `/var/log/roitsystems-deploy/` and returns one line: the result, the short
+  commit, the containers recreated (or that would be), and the number of
+  warnings. Read the file on the server for the details.
+
+`scripts/test-deploy-gate.sh` tests all of this, and CI runs it.
 
 **Setting it up (once)**
 1. **Make a key just for this**, on your own machine:
    `ssh-keygen -t ed25519 -N '' -C github-actions-deploy -f deploy_key`.
-2. **On the server**, allow that key to run the gate and nothing else. Add one
-   line to the deploy user's `~/.ssh/authorized_keys` (`restrict` turns off
-   shells, port forwarding and the rest):
+2. **On the server, install the gate** from a checkout of `main` you've read:
+   ```bash
+   install -o root -g root -m 0755 /root/roitsystems-infra/scripts/deploy-gate.sh /usr/local/sbin/roitsystems-deploy-gate
+   install -d -m 700 /var/lib/roitsystems-deploy-gate /var/log/roitsystems-deploy
    ```
-   restrict,command="/root/roitsystems-infra/scripts/deploy-gate.sh" ssh-ed25519 AAAA... github-actions-deploy
+   Then allow the key to run it and nothing else. Add one line to the deploy
+   user's `~/.ssh/authorized_keys` (`restrict` turns off shells, port
+   forwarding and the rest):
    ```
-   and create the gate's state folder:
-   `install -d -m 700 /var/lib/roitsystems-deploy-gate`.
+   restrict,command="/usr/local/sbin/roitsystems-deploy-gate" ssh-ed25519 AAAA... github-actions-deploy
+   ```
+   When a later PR changes `scripts/deploy-gate.sh`, nothing happens on the
+   server until you read it and run the first `install` command again. The
+   gate also refuses to run from inside the checkout.
 3. **On GitHub, create the Environment first**: Settings → Environments → *New
    environment* `production-deploy`.
    - *Required reviewers*: yourself.

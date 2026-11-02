@@ -7,8 +7,10 @@
 #
 # Each run is two jobs, and each waits for her approval: first a dry run of one
 # target, then (only if "deploy" was chosen) the deploy itself. On the server, the
-# key may only run scripts/deploy-gate.sh, which refuses a deploy without a recent
-# dry run of the same target and the same main commit.
+# key may only run the installed deploy gate (scripts/deploy-gate.sh, copied to
+# /usr/local/sbin), which refuses a deploy without a recent dry run of the same
+# target and main commit. This log is public: the gate returns only a one-line
+# summary, and keeps deploy.sh's full output on the server.
 name: Deploy (manual)
 
 on:
