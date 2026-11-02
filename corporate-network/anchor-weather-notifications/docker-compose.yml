@@ -16,6 +16,11 @@ services:
     logging: *journald
     build: .
     container_name: anchor-weather-notifications
+    # It only reads its code and talks to NATS and Resend: nothing to write, no capabilities.
+    user: node
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       NATS_URL: nats://nats:4222
