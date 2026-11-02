@@ -78,6 +78,12 @@ updates:
           - "fastify"
           - "@fastify/*"
 
+  # Base image (pinned to an exact Node version in the Dockerfile).
+  - package-ecosystem: docker
+    directory: "/corporate-network/image-converter/api"
+    schedule:
+      interval: weekly
+
   - package-ecosystem: npm
     directory: "/corporate-network/image-converter/imagemagick-service"
     schedule:
