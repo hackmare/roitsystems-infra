@@ -107,3 +107,15 @@ updates:
     directory: "/corporate-network/image-converter/imagemagick-service"
     schedule:
       interval: weekly
+
+  - package-ecosystem: npm
+    directory: "/corporate-network/anchor-weather-notifications"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # Base image (pinned to an exact Node version in the Dockerfile).
+  - package-ecosystem: docker
+    directory: "/corporate-network/anchor-weather-notifications"
+    schedule:
+      interval: weekly

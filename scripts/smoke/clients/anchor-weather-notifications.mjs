@@ -59,8 +59,20 @@ check(!requests.some((r) => r.json.subject === 'no body'), 'a message missing bo
 check(requests.some((r) => r.json.subject === 'smoke-resend-error'), 'a Resend error response is received (and the next message is still sent)');
 check(requests.length === 2, `exactly two requests made (${requests.length})`);
 
-const noKey = spawnSync(process.execPath, ['/app/index.js'], { env: { PATH: process.env.PATH }, encoding: 'utf8', timeout: 10_000 });
+const start = (env) => spawnSync(process.execPath, ['/app/index.js'], {
+  env: { PATH: process.env.PATH, NATS_URL: 'nats://127.0.0.1:1', ...env }, encoding: 'utf8', timeout: 5_000 });
+const noKey = start({});
 check(noKey.status === 1 && /RESEND_API_KEY is not set/.test(noKey.stderr), 'refuses to start without RESEND_API_KEY');
+// In production the API key may only go to Resend's own API.
+const KEY = { RESEND_API_KEY: 're_smoke_test_only_not_a_key', NODE_ENV: 'production' };
+for (const base of ['http://127.0.0.1:8025', 'https://api.resend.com.evil.example', 'http://api.resend.com', 'not a url']) {
+  const r = start({ ...KEY, RESEND_BASE_URL: base });
+  check(r.status === 1 && /RESEND_BASE_URL must be/.test(r.stderr), `production refuses RESEND_BASE_URL=${base}`);
+}
+for (const base of [undefined, 'https://api.resend.com', 'https://api.resend.com/']) {
+  const r = start({ ...KEY, ...(base ? { RESEND_BASE_URL: base } : {}) });
+  check(!/RESEND_BASE_URL must be/.test(r.stderr), `production accepts ${base ? `RESEND_BASE_URL=${base}` : 'no RESEND_BASE_URL'}`);
+}
 
 await nc.close();
 fake.close();
