@@ -119,3 +119,12 @@ updates:
     directory: "/corporate-network/anchor-weather-notifications"
     schedule:
       interval: weekly
+
+  # Caddy, pinned by version and digest in the infrastructure compose file. It fronts
+  # Vector Weather too: each update recreates it, so deploying one needs Morgane's go.
+  - package-ecosystem: docker-compose
+    directory: "/infrastructure"
+    schedule:
+      interval: weekly
+    allow:
+      - dependency-name: caddy
