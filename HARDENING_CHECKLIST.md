@@ -16,10 +16,10 @@ again after any change to the host, the Caddyfile or the compose files.
 
 ## Network and Host
 
-- [ ] Only Caddy publishes ports to the host (80 and 443)
+- [ ] Only Caddy publishes ports to the outside (80 and 443); anything else bound on the host uses loopback only
 - [ ] Internal services (CouchDB, NATS, the APIs and workers) aren't reachable from outside the host
 - [ ] The firewall allows only what's needed
-- [ ] SSH accepts keys only, and root login is disabled
+- [ ] SSH accepts keys only (no password logins)
 - [ ] Automatic OS security updates are on
 
 ## TLS / HTTPS

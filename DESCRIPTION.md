@@ -47,7 +47,8 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
    └─────────────────────────────────────────────────────────────────────┘
 ```
 
-Each box is a container. Only Caddy publishes ports; everything else is on
+Each box is a container. Only Caddy publishes ports to the outside; NATS also
+listens on the host's loopback, for on-host clients. Everything else is on
 internal Docker networks. The three Compose projects are `infrastructure/`
 (Caddy, NATS, CouchDB), `corporate-network/contact-inbox/` and
 `corporate-network/image-converter/`.
@@ -105,7 +106,7 @@ internal Docker networks. The three Compose projects are `infrastructure/`
 - Subscribes to `image.convert`
 - Runs the ImageMagick CLI with the requested settings
 - Publishes `image.ready` with the base64 result in the requested format, or an error
-- **Stateless**: processes one job at a time
+- **Stateless**: jobs run concurrently
 
 ---
 
@@ -332,7 +333,7 @@ Used for deduplication and retry state:
 ## Security Model
 
 ### Network Isolation
-- Only Caddy publishes ports (80, 443)
+- Only Caddy publishes ports to the outside (80, 443); NATS also listens on the host's loopback for on-host clients
 - The other services are on internal Docker networks
 - NATS clients each connect with their own user and subject permissions
 
