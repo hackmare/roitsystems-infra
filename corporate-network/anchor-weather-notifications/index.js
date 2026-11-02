@@ -33,10 +33,15 @@ function log(level, message, data = {}) {
   console.log(JSON.stringify({ timestamp: new Date().toISOString(), level, message, ...data }));
 }
 
+// Logs carry the notification type and status only: addresses, names and the
+// email itself are users' personal data.
 async function sendEmail(payload) {
   const { to_email, to_name, subject, body_html, cc_email } = payload;
   if (!to_email || !subject || !body_html) {
-    log('warn', 'Skipping message with missing fields', { payload });
+    log('warn', 'Skipping message with missing fields', {
+      type: payload.type,
+      missing: ['to_email', 'subject', 'body_html'].filter((k) => !payload[k]),
+    });
     return;
   }
   const to = to_name ? `${to_name} <${to_email}>` : to_email;
@@ -53,7 +58,7 @@ async function sendEmail(payload) {
   if (error) {
     throw new Error(`Resend error: ${JSON.stringify(error)}`);
   }
-  log('info', 'Email sent', { type: payload.type, to: to_email });
+  log('info', 'Email sent', { type: payload.type, hasCc: !!cc_email });
 }
 
 async function main() {
@@ -79,12 +84,12 @@ async function main() {
       continue;
     }
 
-    log('info', 'Received notification', { type: payload.type, to: payload.to_email });
+    log('info', 'Received notification', { type: payload.type });
 
     try {
       await sendEmail(payload);
     } catch (e) {
-      log('error', 'Failed to send email', { error: String(e), type: payload.type, to: payload.to_email });
+      log('error', 'Failed to send email', { error: String(e), type: payload.type });
     }
   }
 
