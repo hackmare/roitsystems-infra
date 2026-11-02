@@ -70,8 +70,9 @@ docker compose up -d --build
 | `GET` | `/auth/login`, `/auth/callback`, `/auth/logout` | None | Google sign-in and sign-out |
 
 "Admin session" is the `session` cookie set after Google sign-in, for an account
-listed in `ADMIN_EMAILS`. A request without one is redirected to
-`/auth/login`; a session for any other account gets `403`.
+listed in `ADMIN_EMAILS`. Without one, contact-inbox's admin routes redirect to
+`/auth/login`, and the image-converter API answers `401` (its page then sends the
+browser to sign-in). A session for any other account gets `403`.
 
 ## Contact form payload
 
