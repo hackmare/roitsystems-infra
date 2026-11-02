@@ -1,0 +1,93 @@
+# Push-button production deploy, started by hand from the Actions tab.
+#
+# It does nothing until Morgane sets it up (see DEPLOY.md, "Push-button deploy"):
+# the "production-deploy" Environment with herself as required reviewer, and the
+# deploy key and host settings as secrets of that Environment. Until then every run
+# stops at its first step.
+#
+# Each run is two jobs, and each waits for her approval: first a dry run of one
+# target, then (only if "deploy" was chosen) the deploy itself. On the server, the
+# key may only run the installed deploy gate (scripts/deploy-gate.sh, copied to
+# /usr/local/sbin), which refuses a deploy without a recent dry run of the same
+# target and main commit. This log is public: the gate returns only a one-line
+# summary, and keeps deploy.sh's full output on the server.
+name: Deploy (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: What to deploy
+        type: choice
+        options: [contact-inbox, image-converter, infrastructure]
+      mode:
+        description: Dry run only, or dry run then deploy
+        type: choice
+        options: [dry-run, deploy]
+        default: dry-run
+
+permissions: {}
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production-deploy
+    steps:
+      - name: Set up the deploy key
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          USER_NAME: ${{ secrets.DEPLOY_SSH_USER }}
+        run: |
+          if [ -z "$KEY" ] || [ -z "$KNOWN_HOSTS" ] || [ -z "$HOST" ] || [ -z "$USER_NAME" ]; then
+            echo "::error::Not set up: the production-deploy Environment's secrets are missing (see DEPLOY.md). Nothing was run."
+            exit 1
+          fi
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf 'Host deploy-target\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/deploy_key\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  BatchMode yes\n' \
+            "$HOST" "$USER_NAME" > ~/.ssh/config
+      - name: Dry run
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          # shellcheck disable=SC2029  # expands here on purpose; the gate checks the text
+          ssh deploy-target "dry-run $TARGET"
+
+  deploy:
+    needs: dry-run
+    if: github.ref == 'refs/heads/main' && inputs.mode == 'deploy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-deploy
+    steps:
+      - name: Set up the deploy key
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          USER_NAME: ${{ secrets.DEPLOY_SSH_USER }}
+        run: |
+          if [ -z "$KEY" ] || [ -z "$KNOWN_HOSTS" ] || [ -z "$HOST" ] || [ -z "$USER_NAME" ]; then
+            echo "::error::Not set up: the production-deploy Environment's secrets are missing (see DEPLOY.md). Nothing was run."
+            exit 1
+          fi
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf 'Host deploy-target\n  HostName %s\n  User %s\n  IdentityFile ~/.ssh/deploy_key\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  BatchMode yes\n' \
+            "$HOST" "$USER_NAME" > ~/.ssh/config
+      - name: Deploy
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          # shellcheck disable=SC2029  # expands here on purpose; the gate checks the text
+          ssh deploy-target "deploy $TARGET"

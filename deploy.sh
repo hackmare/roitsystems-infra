@@ -85,13 +85,9 @@ AW_BEFORE="$(aw_snapshot)"
 
 # ── Update the checkout ────────────────────────────────────────────────────
 
-if [ "$DRY_RUN" -eq 1 ]; then
-  git fetch origin main
-  log "[dry-run] Would fast-forward $(git rev-parse --short HEAD) -> $(git rev-parse --short origin/main)"
-else
-  log "Updating checkout (fast-forward only)..."
-  git pull --ff-only origin main
-fi
+# shellcheck source=scripts/lib/update-checkout.sh
+. "$REPO_ROOT/scripts/lib/update-checkout.sh"
+update_checkout "$DRY_RUN"
 log "Deploying commit: $(git log --oneline -1)"
 
 # ── Helpers ────────────────────────────────────────────────────────────────

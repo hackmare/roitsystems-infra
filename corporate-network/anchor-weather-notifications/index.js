@@ -33,10 +33,15 @@ function log(level, message, data = {}) {
   console.log(JSON.stringify({ timestamp: new Date().toISOString(), level, message, ...data }));
 }
 
+// Logs carry the notification type and status only: addresses, names and the
+// email itself are users' personal data.
 async function sendEmail(payload) {
   const { to_email, to_name, subject, body_html, cc_email } = payload;
   if (!to_email || !subject || !body_html) {
-    log('warn', 'Skipping message with missing fields', { payload });
+    log('warn', 'Skipping message with missing fields', {
+      type: payload.type,
+      missing: ['to_email', 'subject', 'body_html'].filter((k) => !payload[k]),
+    });
     return;
   }
   const to = to_name ? `${to_name} <${to_email}>` : to_email;
@@ -51,9 +56,12 @@ async function sendEmail(payload) {
   }
   const { error } = await resend.emails.send(params);
   if (error) {
-    throw new Error(`Resend error: ${JSON.stringify(error)}`);
+    // Resend's message can quote the addresses it rejected: keep only its kind.
+    const failure = new Error('Resend error');
+    failure.resend = { name: error.name, statusCode: error.statusCode };
+    throw failure;
   }
-  log('info', 'Email sent', { type: payload.type, to: to_email });
+  log('info', 'Email sent', { type: payload.type, hasCc: !!cc_email });
 }
 
 async function main() {
@@ -75,16 +83,17 @@ async function main() {
     try {
       payload = JSON.parse(sc.decode(msg.data));
     } catch (e) {
-      log('warn', 'Failed to parse message', { error: String(e) });
+      // The parse error's text quotes part of the input (which may hold an address).
+      log('warn', 'Failed to parse message', { error: e.name });
       continue;
     }
 
-    log('info', 'Received notification', { type: payload.type, to: payload.to_email });
+    log('info', 'Received notification', { type: payload.type });
 
     try {
       await sendEmail(payload);
     } catch (e) {
-      log('error', 'Failed to send email', { error: String(e), type: payload.type, to: payload.to_email });
+      log('error', 'Failed to send email', { error: e.resend ? 'Resend error' : e.name, ...(e.resend || {}), type: payload.type });
     }
   }
 

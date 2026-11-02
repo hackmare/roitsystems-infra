@@ -106,9 +106,10 @@ Follow the release process below for every production deploy.
 
 ## Release Process
 
-Production deploys are manual, by one person, one target at a time.
-(`.github/workflows/deploy.yml` has no credentials configured and does not
-deploy anything.)
+Production deploys are manual, by one person, one target at a time: from a
+shell on the server, or, once it's set up, from the
+[push-button workflow](#push-button-deploy-not-set-up-yet). Either way, the gates
+and checks below apply.
 
 ### Before deploying (gates)
 
@@ -191,8 +192,81 @@ If a check fails, roll back (see [Rollback](#rollback)).
 
 - Images tagged by commit, with the last two kept, so a rollback needs no
   rebuild.
-- Optionally later, a manually started deploy workflow that requires
-  approval and uses a key restricted to `deploy.sh`.
+
+### Push-button deploy (not set up yet)
+
+`.github/workflows/deploy-manual.yml` deploys one target from GitHub's Actions
+tab. **It does nothing until the steps below are done**: without the Environment's
+secrets, every run stops at its first step.
+
+**How a run works**
+1. In Actions → *Deploy (manual)* → *Run workflow*, pick the target, and *dry-run*
+   or *deploy*. Runs start only from `main`, and only one at a time.
+2. The **dry-run job** waits for approval in the `production-deploy` Environment,
+   then runs `./deploy.sh --dry-run <target>` on the server. Read its output.
+3. If you chose *deploy*, the **deploy job** waits for a second approval, then runs
+   `./deploy.sh <target>`. Then do the [checks](#after-deploying-checks).
+
+The workflow's key can only run the deploy gate, a copy of
+`scripts/deploy-gate.sh` installed outside the checkout, so a change merged to
+`main` can't change what the key may do.
+- **What it accepts:** exactly `dry-run <target>` or `deploy <target>`, for the
+  three targets, and nothing else: no shell, no other arguments, never
+  `--allow-caddy-restart`.
+- **When it deploys:** only after a dry run of that target in the last 30
+  minutes, with `main` unmoved since. It then deploys exactly the commit the dry
+  run showed (`DEPLOY_COMMIT`), even if someone pushes in between. One dry run
+  allows one deploy.
+- **What it shows:** **the Actions log is public**, like the repository. So the
+  gate keeps `deploy.sh`'s full output in a root-only file under
+  `/var/log/roitsystems-deploy/`, deleting files older than 30 days, and returns
+  one line: the result, the short
+  commit, the containers recreated (or that would be), and the number of
+  warnings. Read the file on the server for the details.
+
+`scripts/test-deploy-gate.sh` tests all of this, and CI runs it.
+
+**Setting it up (once)**
+0. **First, deploy from a shell** the release that contains this workflow, as in
+   [Deploying](#deploying). The gate relies on the server's `deploy.sh` honouring
+   `DEPLOY_COMMIT`, and until that release is on the server, its older `deploy.sh`
+   would ignore it.
+1. **Make a key just for this**, on your own machine:
+   `ssh-keygen -t ed25519 -N '' -C github-actions-deploy -f deploy_key`.
+2. **On the server, install the gate** from a checkout of `main` you've read:
+   ```bash
+   install -o root -g root -m 0755 /root/roitsystems-infra/scripts/deploy-gate.sh /usr/local/sbin/roitsystems-deploy-gate
+   install -d -m 700 /var/lib/roitsystems-deploy-gate /var/log/roitsystems-deploy
+   ```
+   Then allow the key to run it and nothing else. Add one line to the deploy
+   user's `~/.ssh/authorized_keys` (`restrict` turns off shells, port
+   forwarding and the rest):
+   ```
+   restrict,command="/usr/local/sbin/roitsystems-deploy-gate" ssh-ed25519 AAAA... github-actions-deploy
+   ```
+   When a later PR changes `scripts/deploy-gate.sh`, nothing happens on the
+   server until you read it and run the first `install` command again. The
+   gate also refuses to run from inside the checkout.
+3. **On GitHub, create the Environment first**: Settings → Environments → *New
+   environment* `production-deploy`.
+   - *Required reviewers*: yourself.
+   - *Deployment branches*: `main` only.
+
+   Only then add the four **Environment** secrets (never repository secrets,
+   which any workflow could read):
+   - `DEPLOY_SSH_KEY`: the private key from step 1;
+   - `DEPLOY_SSH_HOST` and `DEPLOY_SSH_USER`;
+   - `DEPLOY_KNOWN_HOSTS`: the server's host key line, from
+     `ssh-keyscan -t ed25519 <host>`, checked against
+     `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server.
+4. Delete `deploy_key` from your machine once it's stored.
+
+If the workflow is run before step 3, GitHub creates an empty
+`production-deploy` Environment with no rules. With no secrets the run still
+stops at its first step, but add the reviewer rule before any secret.
+
+**To switch it off:** remove the `authorized_keys` line on the server. Deleting
+the Environment's secrets also stops it.
 
 ## Log retention (30 days)
 
