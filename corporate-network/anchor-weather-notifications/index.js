@@ -12,16 +12,16 @@ if (!RESEND_API_KEY) {
   process.exit(1);
 }
 
-// The Resend SDK sends the API key to RESEND_BASE_URL when it is set. Only tests
-// may point it elsewhere; in production it must be Resend's own API.
+// The Resend SDK sends the API key to RESEND_BASE_URL when it is set. It must be
+// Resend's own API unless RESEND_ALLOW_TEST_BASE_URL=1, which only the smoke test sets.
 const RESEND_BASE_URL = process.env.RESEND_BASE_URL;
-if (RESEND_BASE_URL && process.env.NODE_ENV === 'production') {
+if (RESEND_BASE_URL && process.env.RESEND_ALLOW_TEST_BASE_URL !== '1') {
   let origin = null;
   try {
     origin = new URL(RESEND_BASE_URL).origin;
   } catch {}
   if (origin !== 'https://api.resend.com') {
-    console.error('[anchor-weather-notifications] RESEND_BASE_URL must be https://api.resend.com in production — exiting');
+    console.error('[anchor-weather-notifications] RESEND_BASE_URL must be https://api.resend.com — exiting');
     process.exit(1);
   }
 }

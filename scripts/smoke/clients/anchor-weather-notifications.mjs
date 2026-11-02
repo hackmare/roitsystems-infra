@@ -63,16 +63,21 @@ const start = (env) => spawnSync(process.execPath, ['/app/index.js'], {
   env: { PATH: process.env.PATH, NATS_URL: 'nats://127.0.0.1:1', ...env }, encoding: 'utf8', timeout: 5_000 });
 const noKey = start({});
 check(noKey.status === 1 && /RESEND_API_KEY is not set/.test(noKey.stderr), 'refuses to start without RESEND_API_KEY');
-// In production the API key may only go to Resend's own API.
-const KEY = { RESEND_API_KEY: 're_smoke_test_only_not_a_key', NODE_ENV: 'production' };
-for (const base of ['http://127.0.0.1:8025', 'https://api.resend.com.evil.example', 'http://api.resend.com', 'not a url']) {
-  const r = start({ ...KEY, RESEND_BASE_URL: base });
-  check(r.status === 1 && /RESEND_BASE_URL must be/.test(r.stderr), `production refuses RESEND_BASE_URL=${base}`);
+// The API key may only go to Resend's own API, whatever NODE_ENV is, unless the
+// test flag is set.
+const KEY = { RESEND_API_KEY: 're_smoke_test_only_not_a_key' };
+const refused = (r) => r.status === 1 && /RESEND_BASE_URL must be/.test(r.stderr);
+for (const env of [{}, { NODE_ENV: 'production' }, { NODE_ENV: 'development' }, { RESEND_ALLOW_TEST_BASE_URL: 'true' }]) {
+  for (const base of ['http://127.0.0.1:8025', 'https://api.resend.com.evil.example', 'http://api.resend.com', 'not a url']) {
+    check(refused(start({ ...KEY, ...env, RESEND_BASE_URL: base })), `refuses RESEND_BASE_URL=${base} with ${JSON.stringify(env)}`);
+  }
 }
 for (const base of [undefined, 'https://api.resend.com', 'https://api.resend.com/']) {
-  const r = start({ ...KEY, ...(base ? { RESEND_BASE_URL: base } : {}) });
-  check(!/RESEND_BASE_URL must be/.test(r.stderr), `production accepts ${base ? `RESEND_BASE_URL=${base}` : 'no RESEND_BASE_URL'}`);
+  const r = start({ ...KEY, NODE_ENV: 'production', ...(base ? { RESEND_BASE_URL: base } : {}) });
+  check(!refused(r), `accepts ${base ? `RESEND_BASE_URL=${base}` : 'no RESEND_BASE_URL'}`);
 }
+check(!refused(start({ ...KEY, RESEND_BASE_URL: 'http://127.0.0.1:8025', RESEND_ALLOW_TEST_BASE_URL: '1' })),
+  'accepts a test base only with RESEND_ALLOW_TEST_BASE_URL=1');
 
 await nc.close();
 fake.close();
