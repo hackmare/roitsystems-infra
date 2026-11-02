@@ -15,9 +15,11 @@
 }
 
 # inside every reverse_proxy: the visitor's address, as Caddy determined it, and
-# nothing a client sent
+# nothing a client sent. CF-Connecting-IP is overwritten too, because apps prefer it
+# when present: a request that didn't come through Cloudflare can't bring its own.
 (to_upstream) {
   header_up X-Forwarded-For {client_ip}
+  header_up CF-Connecting-IP {client_ip}
 }
 
 (anchor_weather_headers) {
