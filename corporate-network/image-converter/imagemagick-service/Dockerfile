@@ -9,7 +9,7 @@ RUN apk add --no-cache imagemagick
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 
 # Copy application
 COPY index.js .
