@@ -163,22 +163,21 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
 ### Image Conversion Job
 
 ```
-1. Admin UI submits job: POST /corporate-network/image-converter/api/image-jobs with file + params
+1. Admin UI submits job: POST /corporate-network/image-converter/api/image-jobs, JSON with filename, base64 data, format_in, format_out and settings
 2. The image-converter API checks the admin session cookie
 3. Fastify generates transaction_id (UUID)
-4. Fastify stores file in temp location or as base64
-5. Fastify stores job doc in CouchDB: { _id: transaction_id, status: 'queued', params, filename }
-6. Fastify publishes event to NATS: { transaction_id, type: 'image.convert', params }
-7. Fastify returns 202 with transaction_id
-8. ImageMagick worker receives 'image.convert' event
-9. Worker downloads image file (from shared storage or embedded in message)
-10. Worker calls: convert input.png -format webp -quality 85 output.webp
-11. Worker encodes result as base64
-12. Worker publishes 'image.ready': { transaction_id, data: base64 }
-13. Worker updates CouchDB: { _id: transaction_id, status: 'done', data: base64, ... }
-14. Admin UI polls GET /corporate-network/image-converter/api/image-jobs/:transaction_id
-15. Frontend detects status === 'done', displays preview, shows download button
-16. User clicks download → browser decodes base64 and saves file
+4. Fastify stores job doc in CouchDB: { _id: transaction_id, status: 'queued', params, filename }
+5. Fastify publishes 'image.convert' to NATS: { transaction_id, data, params }
+6. Fastify returns 202 with transaction_id
+7. ImageMagick worker receives 'image.convert' event
+8. Worker takes the base64 image from the message
+9. Worker calls: convert input.png -format webp -quality 85 output.webp
+10. Worker encodes result as base64
+11. Worker publishes 'image.ready': { transaction_id, data: base64 }
+12. Worker updates CouchDB: { _id: transaction_id, status: 'done', data: base64, ... }
+13. Admin UI polls GET /corporate-network/image-converter/api/image-jobs/:transaction_id
+14. Frontend detects status === 'done', displays preview, shows download button
+15. User clicks download → browser decodes base64 and saves file
 ```
 
 ---

@@ -13,7 +13,7 @@ Private message-ingestion infrastructure for [roitsystems.ca](https://roitsystem
 2. **Message Storage**: Stores each message durably in CouchDB.
 3. **AI Analysis**: Worker processes messages asynchronously via NATS, calling Claude API for intelligent analysis (company research, competitive insights, market timing).
 4. **Notifications**: Sends email summaries via Resend with extracted intelligence and recommendations.
-5. **Image Conversion**: Internal admin tool for converting images with ImageMagick (PNG, JPG, WebP, GIF, TIFF) with advanced parameters.
+5. **Image Conversion**: Internal admin tool for converting images with ImageMagick (PNG, JPG, WebP and GIF in; those or SVG out) with advanced parameters.
 6. **Admin Dashboard**: Private UI for managing messages and image conversions.
 
 ## Quick start (local)
@@ -95,39 +95,40 @@ listed in `ADMIN_EMAILS`. A request without one is redirected to
 
 ## Image conversion job payload
 
+A JSON body, with the image itself base64-encoded in `data`:
+
 ```json
 {
-  "params": {
-    "format": "webp",
-    "quality": 85,
-    "width": 1200,
-    "height": 630,
-    "rotate": 0,
-    "trim": false,
-    "colorspace": "sRGB",
-    "background": "#ffffff",
-    "flatten": false,
-    "density": 72,
-    "blur": 0,
-    "sharpen": 0
-  }
+  "filename": "original-filename.png",
+  "data": "iVBORw0KGgo...base64-encoded-image...",
+  "format_in": "png",
+  "format_out": "webp",
+  "quality": 85,
+  "width": 1200,
+  "height": 630,
+  "rotate": 0,
+  "trim": false,
+  "colorspace": "sRGB",
+  "background": "#ffffff",
+  "flatten": false,
+  "density": 72,
+  "blur": 0,
+  "sharpen": 0
 }
 ```
 
-Multipart form data: field `file` contains the binary image, field `params` contains the JSON above (stringified). Response:
+`filename`, `data`, `format_in` and `format_out` are required; the rest are
+optional. `format_in` is one of `png`, `jpg`, `jpeg`, `webp`, `gif`;
+`format_out` may also be `svg`. A valid job is answered with `202`:
 
 ```json
 {
   "transaction_id": "uuid-here",
-  "status": "queued",
-  "params": {...},
-  "filename": "original-filename.png",
-  "created_at": "2026-05-08T19:00:00.000Z",
-  "updated_at": "2026-05-08T19:00:00.000Z"
+  "status": "queued"
 }
 ```
 
-Poll `GET /corporate-network/image-converter/api/image-jobs/:transaction_id` with the `transaction_id` above. When `status === "done"`, the response includes `data` (base64-encoded PNG):
+Poll `GET /corporate-network/image-converter/api/image-jobs/:transaction_id` with the `transaction_id` above. When `status === "done"`, the response includes `data` (base64-encoded, in `format_out`):
 
 ```json
 {
@@ -151,7 +152,7 @@ Google. View all contact messages, their status, and AI-generated insights.
 ### Image Converter
 Open `/corporate-network/image-converter/convert` on the API domain and sign in
 with Google. Upload images and convert them using ImageMagick with:
-- Format conversion (PNG, JPG, WebP, GIF, TIFF, BMP, etc.)
+- Format conversion (PNG, JPG, WebP and GIF in; those or SVG out)
 - Resize with aspect ratio lock
 - Rotation, trim, blur, sharpen
 - Quality control and color space adjustment
