@@ -135,8 +135,9 @@ Don't start unless all of these hold:
    the values:
 
    ```bash
-   sed -n 's/^SESSION_SECRET=//p' .env | tr -d "\"'\n" | wc -c   # 32 or more (quotes not counted)
-   sed -n 's/^ADMIN_EMAILS=//p' .env | tr ',' '\n' | grep -c '[^[:space:]]'  # 1 or more
+   # Quotes and a trailing " # comment" aren't part of the value, as in Compose.
+   sed -n 's/^SESSION_SECRET=//p' .env | sed 's/[[:space:]]\{1,\}#.*//' | tr -d "\"'\n" | wc -c   # 32 or more
+   sed -n 's/^ADMIN_EMAILS=//p' .env | sed 's/[[:space:]]\{1,\}#.*//' | tr -d "\"'" | tr ',' '\n' | grep -c '[^[:space:]]'  # 1 or more
    ```
 5. **Open PRs touching the target** are merged or deliberately left for a
    later deploy.
@@ -315,8 +316,9 @@ Once deployed, test these endpoints. None of them stores anything or sends
 email.
 
 ```bash
-# Health check (should return 200)
+# Health checks (should return 200): contact-inbox's API, then image-converter's
 curl https://pubapi.roitsystems.ca/health
+curl https://pubapi.roitsystems.ca/corporate-network/image-converter/health
 
 # Contact route is up: an invalid submission is refused (should return 400).
 # A valid one would store a real message and send a notification email.
