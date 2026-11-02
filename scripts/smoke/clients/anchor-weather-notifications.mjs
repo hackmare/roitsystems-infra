@@ -42,6 +42,9 @@ const send = (o) => nc.publish('anchor.weather.user.comms', typeof o === 'string
 await sleep(500); // let the service's subscription settle
 
 send('not json');
+// Malformed JSON with an address where the parser stops: its error text quotes
+// about 10 characters from there ("smoke-pars").
+send('{"to_email": smoke-parse@example.invalid}');
 send({ type: 'smoke', to_email: 'smoke@example.invalid', subject: 'no body' });
 send({ type: 'smoke', subject: 'smoke-resend-error', to_email: 'smoke@example.invalid', body_html: '<p>x</p>' });
 send({ type: 'smoke', to_email: 'smoke@example.invalid', to_name: 'Smoke Test', subject: 'Smoke subject',

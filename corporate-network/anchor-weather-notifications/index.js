@@ -83,7 +83,8 @@ async function main() {
     try {
       payload = JSON.parse(sc.decode(msg.data));
     } catch (e) {
-      log('warn', 'Failed to parse message', { error: String(e) });
+      // The parse error's text quotes part of the input (which may hold an address).
+      log('warn', 'Failed to parse message', { error: e.name });
       continue;
     }
 
