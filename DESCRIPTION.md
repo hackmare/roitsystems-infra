@@ -17,125 +17,95 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
 ## Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Public Internet                             │
-└────────────────┬────────────────────────────────────────────────┘
-                 │ HTTPS
-                 ▼
-        ┌────────────────┐
-        │  Caddy Proxy   │  (TLS termination, reverse proxy)
-        │  (port 80/443) │
-        └────────┬───────┘
-                 │
-         ┌───────┴──────────────────────────┐
-         │                                   │
-         ▼                                   ▼
-    ┌─────────────────┐           ┌──────────────────────┐
-    │  Fastify API    │           │  Admin UI (browser)  │
-    │  (port 3000)    │           │  /admin              │
-    │                 │           │  /admin/image-convert│
-    │ Routes:         │           └──────────────────────┘
-    │  POST /contact  │
-    │  GET /health    │
-    │  /api/admin/*   │
-    │  /admin/*       │
-    └────────┬────────┘
-             │
-        ┌────┴─────────────────────────┬─────────────┐
-        │                              │             │
-        ▼                              ▼             ▼
-   ┌─────────────┐              ┌──────────────┐   ┌────────────────┐
-   │  CouchDB    │              │ NATS Stream  │   │ Node Worker    │
-   │ (port 5984) │              │ (port 4222)  │   │ (TypeScript)   │
-   │             │              │              │   │                │
-   │ Databases:  │              │ Streams:     │   │ Listens on:    │
-   │  messages   │              │  CONTACT_*   │   │  contact.new   │
-   │  image_jobs │              │  IMAGE_*     │   │  image.ready   │
-   │  bot_state  │              │              │   │                │
-   └─────────────┘              └──────────────┘   │ Calls Claude   │
-        ▲                             ▲            │ API            │
-        │                             │            │ Sends email    │
-        │ Persist                     │ Publish    │ via Resend     │
-        │ queries                     │ events     └────────────────┘
-        │                             │
-    ┌───┴────────────────────────────┴────────┐
-    │                                          │
-    │  Internal Service Network                │
-    │  (no port bindings to host)              │
-    │                                          │
-    └──────────────────────────────────────────┘
-             │
-             │  image.convert
-             ▼
-    ┌─────────────────────────┐
-    │ ImageMagick Worker      │
-    │ (Node.js + execFile)    │
-    │                         │
-    │ Listens: image.convert  │
-    │ Publishes: image.ready  │
-    │                         │
-    │ Calls ImageMagick CLI   │
-    └─────────────────────────┘
+                     Public Internet
+                           │ HTTPS
+                           ▼
+                 ┌───────────────────┐
+                 │  Caddy            │  TLS, security headers, routing
+                 │  (infrastructure) │
+                 └───┬───────────┬───┘
+   /api/contact      │           │  /corporate-network/image-converter/*
+   /api/admin/*      │           │
+   /auth/*           │           │
+   /corporate-network/contact/*  │
+   /health           │           │
+                     ▼           ▼
+   ┌──────────────────────┐   ┌──────────────────────────┐
+   │ contact-inbox-api    │   │ image-converter-api      │
+   │ contact intake,      │   │ image jobs, the          │
+   │ admin API and page,  │   │ converter page,          │
+   │ Google sign-in       │   │ image.ready listener     │
+   └──────┬───────────────┘   └──────┬───────────────────┘
+          │                          │
+          ▼                          ▼
+   ┌───────────────────── corporate-backend network ─────────────────────┐
+   │  CouchDB (messages, image jobs)        NATS JetStream               │
+   │                                                                     │
+   │  contact-inbox-worker        contact.messages.new → status, webhook │
+   │  contact-inbox-notification  contact.messages.new → Claude, Resend  │
+   │  imagemagick-service         image.convert → image.ready            │
+   └─────────────────────────────────────────────────────────────────────┘
 ```
+
+Each box is a container. Only Caddy publishes ports; everything else is on
+internal Docker networks. The three Compose projects are `infrastructure/`
+(Caddy, NATS, CouchDB), `corporate-network/contact-inbox/` and
+`corporate-network/image-converter/`.
 
 ---
 
 ## Component Responsibilities
 
 ### **Caddy** (Reverse Proxy & TLS)
-- Terminates HTTPS/TLS on ports 80 and 443
-- Routes traffic to Fastify API
-- Provisions Let's Encrypt certificates automatically
-- No backend storage; restarts safely
-- **Stateless**
+- Terminates HTTPS/TLS and provisions Let's Encrypt certificates automatically
+- Sets the security headers, and a Content-Security-Policy for the admin pages
+- Routes each path to the API that serves it
+- **Stateless** apart from its certificates (`caddy-data` volume)
 
-### **Fastify API** (TypeScript)
+### **contact-inbox-api** (Fastify, TypeScript)
 - Accepts contact form submissions via `POST /api/contact`
-- Validates input (name, email, message required; honeypot field empty)
-- Rate-limits requests per IP
-- Stores contact messages in CouchDB
-- Publishes events to NATS `contact.messages.new`
-- Exposes admin API (`/api/admin/*`)
-- Serves admin UI pages (`/admin`, `/admin/image-convert`)
-- Handles image conversion job submission and status polling
+- Validates input (Zod; honeypot field must be empty) and rate-limits per client
+- Stores contact messages in CouchDB and publishes `contact.messages.new` to NATS
+- Serves the admin API (`/api/admin/*`) and the message viewer (`/corporate-network/contact/admin`)
+- Runs the Google sign-in (`/auth/*`) and issues the admin session cookie
+- **Stateless** (except for in-flight requests)
+
+### **image-converter-api** (Fastify, TypeScript)
+- Accepts image jobs (`POST /corporate-network/image-converter/api/image-jobs`) and answers status polls
+- Serves the converter page (`/corporate-network/image-converter/convert`)
+- Accepts the same admin session cookie as contact-inbox-api
+- Stores job documents in CouchDB, publishes `image.convert`, and records results from `image.ready`
 - **Stateless** (except for in-flight requests)
 
 ### **CouchDB** (Document Store)
-- Durably stores contact messages with full history
-- Durably stores image conversion job metadata and results
-- Durably stores bot state (for retry logic and deduplication)
+- Durably stores contact messages and image-job documents
 - Supports revision-based concurrency control (`_rev`)
-- Database is auto-created on first API startup
-- **Stateful** — requires backup strategy
+- Databases are created on first API startup
+- **Stateful**: back it up (see [docs/operations.md](docs/operations.md))
 
 ### **NATS JetStream** (Event Streaming)
-- Publishes and subscribes to two streams:
-  - **CONTACT_MESSAGES** — events for new submissions, processing updates
-  - **IMAGE_JOBS** — image conversion requests and completions
-- Provides at-least-once delivery guarantees
-- Durable consumer groups for replay and durability
-- 30-day retention for contact messages; 7-day for image jobs
-- **Stateful** — retains events in file storage
-- **Internal network only** — not exposed to public
+- Carries contact events (`CONTACT_MESSAGES` stream) and image-job messages
+- Durable consumers with explicit acknowledgement for contact events
+- Each client connects with its own user and subject permissions
+- **Stateful**: retains events in file storage (`nats-data` volume)
 
-### **Node Worker** (TypeScript)
-- Subscribes to `contact.messages.new` events from NATS
-- Polls CouchDB for the full message document
-- Calls Claude API for AI analysis (company research, competitive insights)
-- Updates message status in CouchDB (`analyzing` → `done`)
-- Sends email notification via Resend with intelligence summary
-- Handles errors and retries with exponential backoff
-- **Stateless** — except for in-flight processing state
+### **contact-inbox-worker** (TypeScript)
+- Consumes `contact.messages.new` from the `CONTACT_MESSAGES` stream
+- Updates the message's status in CouchDB
+- Calls the optional `NOTIFICATION_WEBHOOK_URL` relay
+- **Stateless**
 
-### **ImageMagick Worker** (Node.js)
-- Subscribes to `image.convert` NATS events
-- Receives image filename and ImageMagick parameters
-- Calls `convert` CLI with requested transformations
-- Encodes result as base64 PNG
-- Publishes `image.ready` event with result data
-- Updates CouchDB job document with status and result
-- Cleans up temp files
-- **Stateless** — processes one job at a time
+### **contact-inbox-notification** (Node.js)
+- Subscribes to `contact.messages.new`
+- Asks the Claude API for an analysis of the enquiry
+- Sends the email summary through Resend
+- **Stateless**
+
+### **imagemagick-service** (Node.js)
+- Subscribes to `image.convert`
+- Runs the ImageMagick CLI with the requested settings
+- Publishes `image.ready` with the base64 result in the requested format, or an error
+- **Stateless**: processes one job at a time
 
 ---
 
@@ -144,7 +114,7 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
 ### Contact Message Submission
 
 ```
-1. Browser submits contact form to https://api.roitsystems.ca/api/contact
+1. Browser submits the contact form to POST /api/contact on the API domain
 2. Fastify validates input (Zod schema)
 3. Fastify rate-limits by IP
 4. Fastify generates unique _id (UUID)
@@ -152,12 +122,11 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
 6. Fastify publishes event to NATS: { type: 'contact.new', message_id, timestamp }
 7. Fastify returns 201 with message_id
 8. Browser redirects to confirmation page
-9. Worker subscribes to 'contact.messages.new', receives event
-10. Worker fetches full message from CouchDB
-11. Worker calls Claude API for analysis
-12. Worker updates CouchDB doc: { status: 'analyzed', intelligence: {...} }
-13. Worker publishes internal event (for UI updates)
-14. Worker sends email via Resend to admin@roitsystems.ca
+9. contact-inbox-worker consumes 'contact.messages.new' from the CONTACT_MESSAGES stream
+10. The worker sets the message's status in CouchDB and calls the optional webhook relay
+11. contact-inbox-notification receives the same event
+12. It asks the Claude API for an analysis of the enquiry
+13. It emails the summary through Resend to NOTIFICATION_EMAIL
 ```
 
 ### Image Conversion Job
@@ -174,7 +143,7 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
 9. Worker calls: convert input.png -format webp -quality 85 output.webp
 10. Worker encodes result as base64
 11. Worker publishes 'image.ready': { transaction_id, data: base64 }
-12. Worker updates CouchDB: { _id: transaction_id, status: 'done', data: base64, ... }
+12. The image-converter API's image.ready listener updates CouchDB: { _id: transaction_id, status: 'done', data: base64, ... }
 13. Admin UI polls GET /corporate-network/image-converter/api/image-jobs/:transaction_id
 14. Frontend detects status === 'done', displays preview, shows download button
 15. User clicks download → browser decodes base64 and saves file
@@ -241,14 +210,14 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
 - Subject: `contact.messages.new`
 - Payload: `{ type: 'contact.new', message_id: UUID, timestamp: ISO8601 }`
 - Retention: 30 days
-- Consumer: Node Worker
+- Consumers: contact-inbox-worker (durable); contact-inbox-notification also subscribes
 
 **IMAGE_JOBS**
 - Subjects: `image.convert`, `image.ready`
 - Payload (convert): `{ transaction_id: UUID, type: 'image.convert', params: {...} }`
 - Payload (ready): `{ transaction_id: UUID, data: base64 }`
 - Retention: 7 days
-- Consumers: ImageMagick Worker, API (for status updates)
+- Consumers: imagemagick-service (`image.convert`), image-converter-api (`image.ready`, for status updates)
 
 ### Event Ordering
 - NATS guarantees **per-subject ordering** (FIFO within a subject)
@@ -270,7 +239,7 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
   "company": "Acme Corp",
   "subject": "AI Readiness",
   "message": "We need help...",
-  "budget": "$15k–$35k",
+  "budget": "15k–35k",
   "timeline": "Q2 2026",
   "source_page": "https://roitsystems.ca/#contact",
   "consent": true,
@@ -297,7 +266,8 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
   "status": "done",
   "filename": "product-screenshot.png",
   "params": {
-    "format": "webp",
+    "format_in": "png",
+    "format_out": "webp",
     "quality": 85,
     "width": 1200,
     "height": 630,
@@ -362,9 +332,9 @@ Used for deduplication and retry state:
 ## Security Model
 
 ### Network Isolation
-- **Public**: Only Caddy ports (80, 443) are exposed
-- **Internal**: CouchDB, NATS, Worker only accessible within container network
-- **DigitalOcean Firewall**: Restrict SSH (port 22) to known IPs
+- Only Caddy publishes ports (80, 443)
+- The other services are on internal Docker networks
+- NATS clients each connect with their own user and subject permissions
 
 ### Authentication
 - **Admin API and pages**: Google sign-in, then a signed HttpOnly session cookie
@@ -373,22 +343,20 @@ Used for deduplication and retry state:
 ### Data Protection
 - **PII in logs**: Redacted by Fastify logger (`email`, `name` fields)
 - **HTTPS/TLS**: Automatic renewal via Let's Encrypt
-- **Database**: No encryption at rest (consider adding with full-disk encryption on VPS)
 
 ### Input Validation
 - **Contact form**: Zod schema validates types and lengths
 - **Honeypot**: Empty field submission triggers validation error
-- **File uploads**: Max 50MB, MIME type checked
-- **Parameters**: Numeric ranges validated (quality 1–100, density > 0)
+- **Image jobs**: JSON body up to 50 MB, base64 image, `format_in`/`format_out` from fixed lists
+- **Parameters**: Numeric ranges validated (quality 1–100, density 1–600, size up to 16384 px)
 
 ---
 
 ## Deployment Considerations
 
 ### Single Server
-- All services on one droplet simplifies networking and secrets management
-- Single point of failure (acceptable for a sales intake tool)
-- Vertical scaling only (upgrade droplet size if needed)
+- All services on one host keeps networking and secrets management simple
+- Scales vertically (a larger host) as needed
 
 ### Multi-Server (Future)
 - Split database to managed CouchDB (e.g., Couchbase Cloud)
@@ -407,16 +375,16 @@ Used for deduplication and retry state:
 
 ### Local Testing
 ```bash
-# Health check
-curl http://localhost:3000/health
+# Health check (Caddy's local certificate, hence -k; see INSTALL.md)
+curl -k https://localhost/health
 
 # Submit contact message
-curl -X POST http://localhost:3000/api/contact \
+curl -k -X POST https://localhost/api/contact \
   -H "Content-Type: application/json" \
   -d '{"name":"Test","email":"test@example.com","message":"Test"}'
 
-# Admin endpoints need a browser session: sign in at
-# http://localhost:3000/auth/login, then open http://localhost:3000/admin
+# Admin endpoints need a browser session: open
+# https://localhost/corporate-network/contact/admin and sign in with Google
 ```
 
 ### Production Monitoring
@@ -433,7 +401,5 @@ curl -X POST http://localhost:3000/api/contact \
 2. **Message search**: Add Elasticsearch for full-text search
 3. **Webhooks**: Allow users to subscribe to message and conversion events
 4. **Analytics**: Dashboard showing submission trends, response times
-5. **API rate limit per endpoint**: Different limits for contact vs admin
-6. **Scheduled tasks**: Use NATS scheduler for daily summary emails
-7. **Encryption at rest**: Full-disk encryption on VPS or encrypted CouchDB
-8. **Message versioning**: Track all edits to admin-modified messages
+5. **Scheduled tasks**: Use NATS scheduler for daily summary emails
+6. **Message versioning**: Track all edits to admin-modified messages
