@@ -74,9 +74,9 @@ const submit = await fetch(`${API}/api/image-jobs`, {
   method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ filename: 'x.png', data: 'aGk=', format_in: 'png', format_out: 'jpg' }),
 });
-check([302, 401, 403].includes(submit.status), `POST /api/image-jobs without login → ${submit.status}, refused`);
+check(submit.status === 401 && (await submit.json()).error === 'Sign-in required', `POST /api/image-jobs without login → ${submit.status}, expect 401 (the page then sends the browser to sign-in)`);
 const status = await fetch(`${API}/api/image-jobs/smoke`, { redirect: 'manual' });
-check([302, 401, 403].includes(status.status), `GET /api/image-jobs/:id without login → ${status.status}, refused`);
+check(status.status === 401 && !status.headers.get('location'), `GET /api/image-jobs/:id without login → ${status.status}, expect 401 and no redirect`);
 
 // Formats: only those imagemagick-service converts are accepted.
 for (const [what, body, expect] of [
