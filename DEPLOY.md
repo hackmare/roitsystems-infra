@@ -16,6 +16,11 @@ Copy the example to `.env` and fill in your values:
 cp .env.example .env
 ```
 
+`deploy.sh` reads each target's own `.env`: `infrastructure/.env`,
+`corporate-network/contact-inbox/.env` and
+`corporate-network/image-converter/.env`. They can be copies of, or links to,
+the same file.
+
 Edit `.env` and set:
 - `API_DOMAIN` — your public domain (e.g., `api.roitsystems.ca`)
 - `CADDY_EMAIL` — email for Let's Encrypt certificate renewal
@@ -114,8 +119,19 @@ Don't start unless all of these hold:
    `main`. For each Node service it installs from the lockfile, builds, runs
    the unit tests where there are any, builds the Docker image, and runs its
    smoke test. Check the run for the `main` commit on GitHub's Actions tab.
-2. **Compose files validate:** `docker compose config --quiet` for each
-   target (CI doesn't check this yet).
+2. **Compose files validate.** CI's `compose config` job checks every
+   `docker-compose.yml` against `.env.example`: it must parse, and every
+   setting it uses must be listed there. On the server, also check each
+   target you deploy against its real `.env`, the way `deploy.sh` reads it.
+   From the checkout root:
+
+   ```bash
+   d=corporate-network/contact-inbox   # or infrastructure, corporate-network/image-converter
+   docker compose --project-directory "$d" -f "$d/docker-compose.yml" config --quiet
+   ```
+
+   A "variable is not set" warning means that target's `.env` lacks a
+   setting. (The "attribute `version` is obsolete" warning is harmless.)
 3. **The services start.** CI's smoke tests (`scripts/smoke/run.sh`) start
    each image against throwaway NATS and CouchDB and check it: for
    contact-inbox's API, `/health`, the contact route (invalid and valid
@@ -131,8 +147,10 @@ Don't start unless all of these hold:
 4. **Session settings are present.** contact-inbox's API and
    image-converter's API refuse to start unless `SESSION_SECRET` is at least
    32 characters and `ADMIN_EMAILS` names at least one admin. Both services
-   read the same `SESSION_SECRET`. Check the server's `.env` without printing
-   the values:
+   must use the same `SESSION_SECRET`. Check each one's `.env`
+   (`corporate-network/contact-inbox/.env` and
+   `corporate-network/image-converter/.env`, which `deploy.sh` reads) without
+   printing the values. Run these in each of the two directories:
 
    ```bash
    # Quotes and a trailing " # comment" aren't part of the value, as in Compose.
@@ -171,7 +189,6 @@ If a check fails, roll back (see [Rollback](#rollback)).
 
 ### Planned improvements
 
-- `docker compose config` in CI, so gate 2 is automatic too.
 - Images tagged by commit, with the last two kept, so a rollback needs no
   rebuild.
 - Optionally later, a manually started deploy workflow that requires
