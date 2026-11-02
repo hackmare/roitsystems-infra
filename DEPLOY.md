@@ -201,7 +201,7 @@ If a check fails, roll back (see [Rollback](#rollback)).
 | Variable | Purpose | Example |
 |----------|---------|---------|
 | `API_DOMAIN` | Public hostname | `api.roitsystems.ca` |
-| `CADDY_EMAIL` | TLS certificate email | `m.oger@roitsystems.ca` |
+| `CADDY_EMAIL` | TLS certificate email | `admin@example.com` |
 | `COUCHDB_USER` | Database admin | `admin` |
 | `COUCHDB_PASSWORD` | Database password | `[strong password]` |
 | `SESSION_SECRET` | Signs admin sessions (contact-inbox and image-converter APIs; at least 32 characters, or they won't start) | `[openssl rand -hex 32]` |
@@ -209,7 +209,7 @@ If a check fails, roll back (see [Rollback](#rollback)).
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google sign-in for the admin pages | From Google Cloud Console |
 | `CLAUDE_API_KEY` | Claude API access | From console.anthropic.com |
 | `RESEND_API_KEY` | Email service | From resend.com |
-| `NOTIFICATION_EMAIL` | Recipient email | `m.oger@roitsystems.ca` |
+| `NOTIFICATION_EMAIL` | Recipient email | `admin@example.com` |
 | `NOTIFICATION_FROM_EMAIL` | Sender email | `notifications@roitsystems.ca` |
 
 ### Optional Variables
