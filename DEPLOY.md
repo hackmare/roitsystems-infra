@@ -90,10 +90,73 @@ ssh root@<droplet-ip>
 
 cd /root/roitsystems-infra
 
-# Preview, then deploy (the script does its own git pull)
-./deploy.sh --dry-run
-./deploy.sh
+# Preview, then deploy one target (the script does its own git pull)
+./deploy.sh --dry-run contact-inbox
+./deploy.sh contact-inbox
 ```
+
+Follow the release process below for every production deploy.
+
+## Release Process
+
+Production deploys are manual, by one person, one target at a time.
+(`.github/workflows/deploy.yml` has no credentials configured and does not
+deploy anything.)
+
+### Before deploying (gates)
+
+Don't start unless all of these hold:
+
+1. **`main` builds.** Every service changed since the last deploy installs
+   from its lockfile (`npm ci`) and builds (`npm run build`), and its Docker
+   image builds. A CI workflow will check this automatically; until then,
+   check it locally.
+2. **Compose files validate:** `docker compose config` for each target.
+3. **contact-inbox starts on its current Fastify major.** Before any
+   contact-inbox rebuild, build the API image, start it, and check that
+   `/health` and the contact route answer. This is a hard stop: no
+   contact-inbox rebuild until it passes.
+4. **Open PRs touching the target** are merged or deliberately left for a
+   later deploy.
+5. **The server checkout is clean.** `git status` shows no edits to tracked
+   files, and `git stash list` shows nothing you need. (`deploy.sh` refuses
+   a dirty tree anyway.)
+
+### Deploying
+
+1. Note the commit currently deployed: `git log --oneline -1`.
+2. `./deploy.sh --dry-run <target>` and read which containers it would
+   recreate. If Caddy is listed, stop and plan a quiet window.
+3. `./deploy.sh <target>`. Do one target at a time, in the order
+   `infrastructure`, `contact-inbox`, `image-converter`, and only those that
+   changed.
+4. Run the checks below before moving on to the next target.
+
+### After deploying (checks)
+
+1. `deploy.sh` reports the anchor-weather containers unchanged. Any
+   difference means stop and investigate.
+2. Every recreated container is up and not restarting (`docker ps`; look for
+   a rising restart count).
+3. The [health checks](#health-checks) answer, including the public sites
+   served through Caddy.
+4. A few minutes of `docker logs` for the recreated containers show no new
+   errors.
+
+If a check fails, roll back (see [Rollback](#rollback)).
+
+### Planned improvements
+
+- A CI workflow on pull requests and pushes: install, build,
+  `docker compose config` and image builds for every service. Read-only
+  permissions, no secrets, and actions pinned to commits.
+- The contact-inbox start-up test as a script, so gate 3 is one command.
+- Images tagged by commit, with the last two kept, so a rollback needs no
+  rebuild.
+- Node 24 for every service, one PR per service, internet-facing services
+  first.
+- Optionally later, a manually started deploy workflow that requires
+  approval and uses a key restricted to `deploy.sh`.
 
 ## Configuration Details
 
@@ -250,13 +313,21 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 
 ## Rollback
 
-To revert to a previous version:
+`deploy.sh` always fast-forwards to `origin/main` before deploying, so
+checking out an older commit on the server and running it just deploys
+`main` again. Roll back through `main` instead:
 
-```bash
-git log --oneline | head -5
-git checkout [commit-hash]
-./deploy.sh
-```
+1. Revert the bad change on `main` (`git revert <commit>` in a PR, then
+   merge).
+2. On the server: `./deploy.sh --dry-run <target>`, then
+   `./deploy.sh <target>`.
+3. Run the [checks](#after-deploying-checks) again.
+
+This rebuilds the images, so it takes a few minutes. Once images are tagged
+by commit (see [Planned improvements](#planned-improvements)), a rollback
+will switch the service back to the previous tag without a rebuild.
+`deploy.sh` never prunes images, so kept tags stay available. Either way,
+go through `deploy.sh`, not ad-hoc `docker` commands.
 
 ## Next Steps
 
