@@ -9,6 +9,25 @@ const NOTIFICATION_FROM_EMAIL = process.env.NOTIFICATION_FROM_EMAIL || 'notifica
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
 const ADMIN_CONSOLE_URL = 'https://pubapi.roitsystems.ca/admin';
 
+// The Resend and Anthropic SDKs send their API keys to RESEND_BASE_URL and
+// ANTHROPIC_BASE_URL when those are set. Each must be the provider's own API unless
+// its test flag is exactly "1", which only the smoke test sets.
+for (const [name, origin, flag] of [
+  ['RESEND_BASE_URL', 'https://api.resend.com', 'RESEND_ALLOW_TEST_BASE_URL'],
+  ['ANTHROPIC_BASE_URL', 'https://api.anthropic.com', 'ANTHROPIC_ALLOW_TEST_BASE_URL'],
+]) {
+  const value = process.env[name];
+  if (!value || process.env[flag] === '1') continue;
+  let actual = null;
+  try {
+    actual = new URL(value).origin;
+  } catch {}
+  if (actual !== origin) {
+    console.error(`[notification-service] ${name} must be ${origin} — exiting`);
+    process.exit(1);
+  }
+}
+
 // Initialize API clients
 const resend = new Resend(process.env.RESEND_API_KEY);
 const anthropic = new Anthropic({
