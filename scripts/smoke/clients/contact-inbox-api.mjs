@@ -104,6 +104,39 @@ for (const next of ['//evil.example', '/..//evil.example', 'https://evil.example
   check(kept === '/corporate-network/contact/admin', `login replaces next=${next} with the admin page (got ${kept})`);
 }
 
+// Rate limits count per client (CF-Connecting-IP, IPv6 per /64), not per proxy.
+const hit = (path, ip, init = {}) => fetch(`${API}${path}`, { redirect: 'manual', ...init,
+  headers: { ...(init.headers || {}), ...(ip ? { 'CF-Connecting-IP': ip } : {}) } });
+const burst = async (n, path, ip, init) => { const codes = []; for (let i = 0; i < n; i++) codes.push((await hit(path, ip, init)).status); return codes; };
+const limited = async (r, what) => {
+  const retry = r.headers.get('retry-after');
+  check(r.status === 429 && !!retry, `${what} → ${r.status}, expect 429 with Retry-After (${retry})`);
+};
+{
+  const codes = await burst(120, '/api/admin/messages', '203.0.113.10');
+  check(!codes.includes(429), `120 admin requests from one client in a minute are allowed (${[...new Set(codes)]})`);
+  await limited(await hit('/api/admin/messages', '203.0.113.10'), 'the 121st admin request');
+  check((await hit('/api/admin/messages', '203.0.113.11')).status !== 429, 'another client is not affected');
+}
+{
+  const codes = await burst(20, '/auth/login?next=/', '2001:db8:1:2::a');
+  check(!codes.includes(429), `20 sign-in requests from one client in a minute are allowed (${[...new Set(codes)]})`);
+  await limited(await hit('/auth/login?next=/', '2001:db8:1:2::b'), 'the 21st, from another address in the same IPv6 /64');
+  check((await hit('/auth/login?next=/', '2001:db8:1:3::a')).status !== 429, 'a client in another /64 is not affected');
+}
+{
+  const codes = [];
+  for (let i = 0; i < 25; i++) codes.push((await hit('/auth/login?next=/', `junk-${i}`)).status);
+  check(codes.includes(429), 'junk CF-Connecting-IP values are ignored (they share one fallback bucket)');
+}
+{
+  const bad = { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://roitsystems.ca' }, body: '{}' };
+  const codes = await burst(50, '/api/contact', '198.51.100.20', bad);
+  check(codes.every((c) => c === 400), `50 contact submissions from one client are allowed (${[...new Set(codes)]})`);
+  await limited(await hit('/api/contact', '198.51.100.20', bad), 'the 51st contact submission');
+  check((await hit('/api/contact', '198.51.100.21', bad)).status === 400, 'another client can still submit');
+}
+
 await nc.close();
 console.log(failures ? `${failures} check(s) failed` : 'all checks passed');
 process.exit(failures ? 1 : 0);
