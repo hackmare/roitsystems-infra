@@ -47,6 +47,13 @@ const docs = {
     subject: 'Hi\r\nBcc: victim@example.invalid <img src=https://evil.example/t.png>' + 'x'.repeat(300),
     message: 'smoke-hostile <img src=https://evil.example/t.png> "><script>alert(1)</script> <a href="https://evil.example">click</a>',
     company_size: '<b>big</b>', source_page: 'https://roitsystems.ca/contact', timestamp: new Date().toISOString() },
+  // Only https pages on roitsystems.ca or a subdomain count; these look-alikes don't.
+  // (Their URLs carry "url-mark" so the log scan can tell a logged URL from a logged id.)
+  ...Object.fromEntries(['https://evil.example/?roitsystems.ca=url-mark', 'https://roitsystems.ca.evil.example/url-mark',
+    'https://evilroitsystems.ca/url-mark', 'http://roitsystems.ca/url-mark', 'not a url url-mark'].map((page, i) => [`smoke-lookalike-${i}`,
+    { _id: `smoke-lookalike-${i}`, name: 'L', email: 'l@example.invalid', subject: 'Lookalike', message: 'From a look-alike page.', source_page: page }])),
+  'smoke-subdomain': { _id: 'smoke-subdomain', name: 'S', email: 's@example.invalid', subject: 'Subdomain',
+    message: 'From www.', source_page: 'https://www.roitsystems.ca/contact', timestamp: new Date().toISOString() },
   'smoke-other-site': { _id: 'smoke-other-site', name: 'X', email: 'x@example.invalid', subject: 'Other',
     message: 'From another site.', source_page: 'https://example.invalid/contact' },
 };
@@ -74,6 +81,8 @@ await sleep(500); // let the service's subscription settle
 nc.publish('contact.messages.new', sc.encode('not json'));
 event('smoke-missing');
 event('smoke-other-site');
+for (let i = 0; i < 5; i++) event(`smoke-lookalike-${i}`);
+event('smoke-subdomain');
 event('smoke-ok');
 event('smoke-ok'); // duplicate
 event('smoke-hostile');
@@ -87,13 +96,15 @@ const couchIds = seen.couch.map((r) => r.url.split('/').pop());
 check(['smoke-missing', 'smoke-other-site', 'smoke-ok'].every((id) => couchIds.includes(id)), `messages fetched from CouchDB (${couchIds.join(', ')})`);
 check(seen.couch.some((r) => r.url === '/contact_messages/smoke%2Fodd%3Fid%231'), 'a message id is sent to CouchDB URL-encoded');
 check(seen.couch.every((r) => r.headers.authorization === 'Basic ' + Buffer.from('smoke:smoke').toString('base64')), 'CouchDB requests use the configured credentials');
-check(seen.anthropic.length === 2, `exactly two analysis requests (${seen.anthropic.length}): the two roitsystems.ca messages, once each`);
+check(seen.anthropic.length === 3, `exactly three analysis requests (${seen.anthropic.length}): the three roitsystems.ca messages, once each`);
+check(!seen.anthropic.some((r) => /look-alike page/.test(JSON.stringify(r.json))), 'no analysis for look-alike pages (evil.example/?roitsystems.ca, roitsystems.ca.evil.example, evilroitsystems.ca, http, not a URL)');
+check(seen.anthropic.some((r) => /From www\./.test(JSON.stringify(r.json))), 'a page on a roitsystems.ca subdomain is processed');
 const a = seen.anthropic.find((r) => /Smoke test message/.test(JSON.stringify(r.json)));
 // The SDK sends the key as x-api-key or as a bearer token, depending on its version.
 const aKey = a?.headers['x-api-key'] || (a?.headers.authorization || '').replace(/^Bearer /, '');
 check(a?.url === '/v1/messages' && aKey === 'sk-smoke-test-only-not-a-key' && /Smoke test message/.test(a?.json?.messages?.[0]?.content || ''),
   'the analysis request goes to /v1/messages with the configured key and the message text');
-check(seen.resend.length === 2, `exactly two emails (${seen.resend.length})`);
+check(seen.resend.length === 3, `exactly three emails (${seen.resend.length})`);
 const e = email?.json || {};
 check(email?.url === '/emails' && email?.headers.authorization === 'Bearer re_smoke_test_only_not_a_key'
   && e.to === 'inbox@example.invalid' && e.from === 'from@example.invalid' && e.subject === 'New Contact: Smoke subject',

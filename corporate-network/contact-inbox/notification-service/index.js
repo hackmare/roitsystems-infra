@@ -440,6 +440,16 @@ async function fetchMessage(messageId) {
   }
 }
 
+// True only for an https URL on roitsystems.ca or one of its subdomains.
+function isRoitSystemsPage(page) {
+  try {
+    const url = new URL(String(page ?? ''));
+    return url.protocol === 'https:' && (url.hostname === 'roitsystems.ca' || url.hostname.endsWith('.roitsystems.ca'));
+  } catch {
+    return false;
+  }
+}
+
 // Process incoming message
 async function processMessage(natsEvent) {
   const messageId = natsEvent.message_id;
@@ -457,19 +467,18 @@ async function processMessage(natsEvent) {
     return;
   }
 
-  // Filter: only process messages from roitsystems.ca
+  // Filter: only process messages sent from roitsystems.ca's own pages. The page
+  // URL comes from the visitor's browser, so it's matched by host, not by text, and
+  // isn't logged.
+  const fromOurSite = isRoitSystemsPage(message.source_page);
   log('info', 'Fetched message from CouchDB', {
     messageId,
     messageKeys: Object.keys(message),
-    hasSourcePage: !!message.source_page,
-    sourcePageValue: message.source_page || '(undefined)',
+    fromOurSite,
   });
 
-  if (!message.source_page?.includes('roitsystems.ca')) {
-    log('info', 'Ignoring message from non-roitsystems.ca source', {
-      messageId,
-      source: message.source_page,
-    });
+  if (!fromOurSite) {
+    log('info', 'Ignoring message not sent from a roitsystems.ca page', { messageId });
     return;
   }
 
