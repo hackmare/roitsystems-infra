@@ -7,7 +7,11 @@ networks:
 
 services:
   caddy:
-    image: caddy:2
+    # An exact version and its digest, so a rebuild or a pull can't change the server under
+    # Vector Weather and the corporate sites without a reviewed PR. Dependabot proposes updates
+    # (.github/dependabot.yml); a new image recreates Caddy, so a deploy needs Morgane's go
+    # and --allow-caddy-restart (DEPLOY.md).
+    image: caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
     restart: unless-stopped
     ports:
       - "80:80"
