@@ -54,6 +54,17 @@ function log(level, message, data = {}) {
   }
 }
 
+// The notification email is built from the contact form (anyone on the internet)
+// and from the model's analysis of it, which the sender can steer. Every value
+// that goes into its HTML is escaped, and the subject is reduced to one plain line.
+function h(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+function headerText(value, max = 150) {
+  return String(value ?? '').replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ').trim().slice(0, max);
+}
+
 // Analyze message with Claude Opus
 async function analyzeMessage(message) {
   try {
@@ -247,73 +258,75 @@ async function sendEmailNotification(message, analysis) {
   <div class="container">
     <div class="header">
       <h2>New Contact Message</h2>
-      <p><code>${message._id || 'unknown'}</code></p>
+      <p><code>${h(message._id || 'unknown')}</code></p>
     </div>
 
     <div class="section">
       <div class="label">From:</div>
-      <div class="value">${message.name || 'Unknown'} &lt;${message.email}&gt;</div>
+      <div class="value">${h(message.name || 'Unknown')} &lt;${h(message.email)}&gt;</div>
     </div>
 
     <div class="section">
       <div class="label">Subject:</div>
-      <div class="value">${message.subject || '(no subject)'}</div>
+      <div class="value">${h(message.subject || '(no subject)')}</div>
     </div>
 
     <div class="section">
       <div class="label">Company Size:</div>
-      <div class="value">${message.company_size || 'Not specified'}</div>
+      <div class="value">${h(message.company_size || 'Not specified')}</div>
     </div>
 
     <div class="section">
       <div class="label">Message:</div>
-      <div class="value" style="white-space: pre-wrap; word-wrap: break-word;">${message.message}</div>
+      <div class="value" style="white-space: pre-wrap; word-wrap: break-word;">${h(message.message)}</div>
     </div>
 
     <div class="intelligence">
       <h3 style="margin-top: 0;">AI Research Analysis</h3>
-      <div><span class="label">Core Need:</span> <div class="value">${analysis.painPoint}</div></div>
+      <div><span class="label">Core Need:</span> <div class="value">${h(analysis.painPoint)}</div></div>
 
       <div style="margin-top: 16px;"><span class="label">Company Research:</span></div>
       <div class="value" style="margin-left: 16px; margin-top: 8px;">
-        ${analysis.companyResearch?.name ? `• Name: ${analysis.companyResearch.name}<br/>` : ''}
-        • Size: ${analysis.companyResearch?.estimatedSize || 'unknown'}<br/>
-        • Industry: ${analysis.companyResearch?.likelyIndustry || 'unknown'}<br/>
-        • Maturity: ${analysis.companyResearch?.organizationalMaturity || 'unknown'}<br/>
-        ${analysis.companyResearch?.industryContext ? `• Industry Context: ${analysis.companyResearch.industryContext}<br/>` : ''}
+        ${analysis.companyResearch?.name ? `• Name: ${h(analysis.companyResearch.name)}<br/>` : ''}
+        • Size: ${h(analysis.companyResearch?.estimatedSize || 'unknown')}<br/>
+        • Industry: ${h(analysis.companyResearch?.likelyIndustry || 'unknown')}<br/>
+        • Maturity: ${h(analysis.companyResearch?.organizationalMaturity || 'unknown')}<br/>
+        ${analysis.companyResearch?.industryContext ? `• Industry Context: ${h(analysis.companyResearch.industryContext)}<br/>` : ''}
       </div>
 
-      ${analysis.competitiveAnalysis ? `<div style="margin-top: 12px;"><span class="label">Market Context:</span> <div class="value">${analysis.competitiveAnalysis}</div></div>` : ''}
+      ${analysis.competitiveAnalysis ? `<div style="margin-top: 12px;"><span class="label">Market Context:</span> <div class="value">${h(analysis.competitiveAnalysis)}</div></div>` : ''}
 
-      <div style="margin-top: 12px;"><span class="label">Technical Context:</span> <div class="value">${technicalContext}</div></div>
+      <div style="margin-top: 12px;"><span class="label">Technical Context:</span> <div class="value">${h(technicalContext)}</div></div>
 
-      ${analysis.marketInsight ? `<div style="margin-top: 12px;"><span class="label">Market Timing:</span> <div class="value">${analysis.marketInsight}</div></div>` : ''}
+      ${analysis.marketInsight ? `<div style="margin-top: 12px;"><span class="label">Market Timing:</span> <div class="value">${h(analysis.marketInsight)}</div></div>` : ''}
 
-      <div style="margin-top: 12px;"><span class="label">Timeline:</span> <div class="value">${analysis.timeline}</div></div>
+      <div style="margin-top: 12px;"><span class="label">Timeline:</span> <div class="value">${h(analysis.timeline)}</div></div>
     </div>
 
     <div class="recommendation">
       <div class="rec-title">📊 Recommended Services</div>
-      <div style="margin-bottom: 12px;"><strong>${analysis.recommendedServices?.join(' • ')}</strong></div>
-      <div><span class="label">Why:</span> <div class="value">${analysis.rationale}</div></div>
-      <div style="margin-top: 12px;"><span class="label">Start With:</span> <div class="value"><strong>${analysis.immediateOpportunity}</strong></div></div>
+      <div style="margin-bottom: 12px;"><strong>${h(analysis.recommendedServices?.join(' • '))}</strong></div>
+      <div><span class="label">Why:</span> <div class="value">${h(analysis.rationale)}</div></div>
+      <div style="margin-top: 12px;"><span class="label">Start With:</span> <div class="value"><strong>${h(analysis.immediateOpportunity)}</strong></div></div>
     </div>
 
     <div class="section">
       <div class="label">Received:</div>
-      <div class="value">${new Date(message.timestamp).toLocaleString()}</div>
+      <div class="value">${h(new Date(message.timestamp).toLocaleString())}</div>
     </div>
 
-    <a href="${ADMIN_CONSOLE_URL}" class="action-button">View in Admin Console</a>
+    <a href="${h(ADMIN_CONSOLE_URL)}" class="action-button">View in Admin Console</a>
   </div>
 </body>
 </html>`;
+
+    const subject = headerText(`New Contact: ${message.subject || message.name}`);
 
     log('info', 'Resend API: Initiating email send', {
       messageId: message._id,
       from: NOTIFICATION_FROM_EMAIL,
       to: NOTIFICATION_EMAIL,
-      subject: `New Contact: ${message.subject || message.name}`,
+      subject,
       htmlLength: htmlContent.length,
     });
 
@@ -322,7 +335,7 @@ async function sendEmailNotification(message, analysis) {
       response = await resend.emails.send({
         from: NOTIFICATION_FROM_EMAIL,
         to: NOTIFICATION_EMAIL,
-        subject: `New Contact: ${message.subject || message.name}`,
+        subject,
         html: htmlContent,
       });
       log('info', 'Resend API: Response received', {

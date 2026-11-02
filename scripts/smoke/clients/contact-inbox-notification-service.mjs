@@ -42,6 +42,11 @@ const docs = {
   'smoke-ok': { _id: 'smoke-ok', name: 'Smoke Sender', email: 'sender@example.invalid', subject: 'Smoke subject',
     message: 'Smoke test message, please ignore.', company_size: '11-50', source_page: 'https://roitsystems.ca/contact',
     timestamp: new Date().toISOString() },
+  // Hostile input: HTML in every field, and a subject that tries to add a header.
+  'smoke-hostile': { _id: 'smoke-hostile', name: 'Eve <a href="https://evil.example">x</a>', email: 'eve@example.invalid"><script>',
+    subject: 'Hi\r\nBcc: victim@example.invalid <img src=https://evil.example/t.png>' + 'x'.repeat(300),
+    message: 'smoke-hostile <img src=https://evil.example/t.png> "><script>alert(1)</script> <a href="https://evil.example">click</a>',
+    company_size: '<b>big</b>', source_page: 'https://roitsystems.ca/contact', timestamp: new Date().toISOString() },
   'smoke-other-site': { _id: 'smoke-other-site', name: 'X', email: 'x@example.invalid', subject: 'Other',
     message: 'From another site.', source_page: 'https://example.invalid/contact' },
 };
@@ -51,9 +56,15 @@ await fake(8026, 'couch', (r) => {
   const id = decodeURIComponent(r.url.split('/').pop());
   return docs[id] ? [200, docs[id]] : [404, { error: 'not_found' }];
 });
-await fake(8027, 'anthropic', () => [200, { id: 'msg_smoke', type: 'message', role: 'assistant', model: 'smoke',
-  content: [{ type: 'text', text: JSON.stringify(analysis) }], stop_reason: 'end_turn', stop_sequence: null,
-  usage: { input_tokens: 1, output_tokens: 1 } }]);
+// For the hostile message, the fake model echoes the payloads in every field, as a
+// steered model could.
+const EVIL = '<a href="https://evil.example">x</a> <img src=https://evil.example/t.png> "><script>';
+const hostileAnalysis = { painPoint: EVIL, companyResearch: { name: EVIL, estimatedSize: EVIL, likelyIndustry: EVIL,
+  organizationalMaturity: EVIL, industryContext: EVIL }, competitiveAnalysis: EVIL, recommendedServices: [EVIL, EVIL],
+  rationale: EVIL, immediateOpportunity: EVIL, timeline: EVIL, technicalContext: [EVIL], marketInsight: EVIL };
+await fake(8027, 'anthropic', (r) => [200, { id: 'msg_smoke', type: 'message', role: 'assistant', model: 'smoke',
+  content: [{ type: 'text', text: JSON.stringify(/smoke-hostile/.test(JSON.stringify(r.json)) ? hostileAnalysis : analysis) }],
+  stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } }]);
 await fake(8025, 'resend', () => [200, { id: 'smoke-email' }]);
 
 const nc = await connect({ servers: process.env.NATS_URL });
@@ -65,25 +76,41 @@ event('smoke-missing');
 event('smoke-other-site');
 event('smoke-ok');
 event('smoke-ok'); // duplicate
+event('smoke-hostile');
 
-const email = await until(() => seen.resend[0]);
+const email = await until(() => seen.resend.find((r) => r.json?.subject === 'New Contact: Smoke subject'));
+const hostile = await until(() => seen.resend.find((r) => /smoke-hostile/.test(r.json?.html || '')));
 await sleep(1000); // time for any further (unwanted) requests
 
 const couchIds = seen.couch.map((r) => r.url.split('/').pop());
 check(['smoke-missing', 'smoke-other-site', 'smoke-ok'].every((id) => couchIds.includes(id)), `messages fetched from CouchDB (${couchIds.join(', ')})`);
 check(seen.couch.every((r) => r.headers.authorization === 'Basic ' + Buffer.from('smoke:smoke').toString('base64')), 'CouchDB requests use the configured credentials');
-check(seen.anthropic.length === 1, `exactly one analysis request (${seen.anthropic.length}): only for the roitsystems.ca message, once`);
-const a = seen.anthropic[0];
+check(seen.anthropic.length === 2, `exactly two analysis requests (${seen.anthropic.length}): the two roitsystems.ca messages, once each`);
+const a = seen.anthropic.find((r) => /Smoke test message/.test(JSON.stringify(r.json)));
 // The SDK sends the key as x-api-key or as a bearer token, depending on its version.
 const aKey = a?.headers['x-api-key'] || (a?.headers.authorization || '').replace(/^Bearer /, '');
 check(a?.url === '/v1/messages' && aKey === 'sk-smoke-test-only-not-a-key' && /Smoke test message/.test(a?.json?.messages?.[0]?.content || ''),
   'the analysis request goes to /v1/messages with the configured key and the message text');
-check(seen.resend.length === 1, `exactly one email (${seen.resend.length})`);
+check(seen.resend.length === 2, `exactly two emails (${seen.resend.length})`);
 const e = email?.json || {};
 check(email?.url === '/emails' && email?.headers.authorization === 'Bearer re_smoke_test_only_not_a_key'
   && e.to === 'inbox@example.invalid' && e.from === 'from@example.invalid' && e.subject === 'New Contact: Smoke subject',
   `the email goes to the configured inbox (${JSON.stringify({ to: e.to, from: e.from, subject: e.subject })})`);
 check(/SMOKE-PAIN-POINT/.test(e.html || '') && /Smoke test message/.test(e.html || ''), 'the email includes the analysis and the message');
+
+// Hostile input arrives escaped: no live markup from the sender or the model.
+const hh = hostile?.json?.html || '';
+check(!!hostile, 'the hostile message is still delivered');
+check(!/<a\s+href="https:\/\/evil/i.test(hh) && !/<img/i.test(hh) && !/<script/i.test(hh) && !/<b>big/.test(hh),
+  'no <a href=evil>, <img>, <script> or <b> from the sender or the model in the html');
+check(hh.includes('&lt;a href=&quot;https://evil.example&quot;&gt;x&lt;/a&gt;') && hh.includes('&lt;img src=https://evil.example/t.png&gt;')
+  && hh.includes('&quot;&gt;&lt;script&gt;'), 'the payloads appear as escaped text');
+const evilCount = (hh.match(/&lt;img src=https:\/\/evil\.example\/t\.png&gt;/g) || []).length;
+check(evilCount >= 14, `every analysis field is escaped too (${evilCount} escaped copies)`);
+const hs = hostile?.json?.subject || '';
+check(!/[\r\n\u0000-\u001f]/.test(hs) && hs.length <= 150 && hs.startsWith('New Contact: Hi Bcc:'),
+  `the subject is one line of at most 150 characters (${hs.length}: ${JSON.stringify(hs.slice(0, 40))}…)`);
+check(!/href="(?!https:\/\/pubapi\.roitsystems\.ca\/admin")/.test(hh), 'the only link is the fixed admin-console URL');
 
 const start = (env) => spawnSync(process.execPath, ['/app/index.js'], {
   env: { PATH: process.env.PATH, NATS_URL: 'nats://127.0.0.1:1', RESEND_API_KEY: 're_x', CLAUDE_API_KEY: 'sk-x', ...env },
