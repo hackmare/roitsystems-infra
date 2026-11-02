@@ -1,15 +1,18 @@
 # CI for the Node services: install, build, build the image (never pushed), and the smoke test where a
-# service has one (scripts/smoke/run.sh). Pull requests only: no secrets, read-only token, nothing deployed.
+# service has one (scripts/smoke/run.sh). Pull requests and pushes to main (so main's builds are checked):
+# no secrets, read-only token, nothing deployed.
 name: CI
 
 on:
   pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,21 +24,28 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # name: as scripts/smoke/run.sh knows it; node: the major version in the service's Dockerfile
-          - { name: anchor-weather-notifications, dir: corporate-network/anchor-weather-notifications, node: "22" }
-          - { name: contact-inbox-api, dir: corporate-network/contact-inbox/api, node: "20" }
-          - { name: contact-inbox-notification-service, dir: corporate-network/contact-inbox/notification-service, node: "18" }
-          - { name: contact-inbox-worker, dir: corporate-network/contact-inbox/worker, node: "20" }
-          - { name: image-converter-api, dir: corporate-network/image-converter/api, node: "20" }
-          - { name: image-converter-imagemagick-service, dir: corporate-network/image-converter/imagemagick-service, node: "18" }
+          # name: as scripts/smoke/run.sh knows it
+          - { name: anchor-weather-notifications, dir: corporate-network/anchor-weather-notifications }
+          - { name: contact-inbox-api, dir: corporate-network/contact-inbox/api }
+          - { name: contact-inbox-notification-service, dir: corporate-network/contact-inbox/notification-service }
+          - { name: contact-inbox-worker, dir: corporate-network/contact-inbox/worker }
+          - { name: image-converter-api, dir: corporate-network/image-converter/api }
+          - { name: image-converter-imagemagick-service, dir: corporate-network/image-converter/imagemagick-service }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
+      - name: Node version from the Dockerfile
+        id: node
+        run: |
+          v=$(sed -n -E 's/^FROM node:([0-9]+).*/\1/p' "${{ matrix.dir }}/Dockerfile" | head -n 1)
+          [ -n "$v" ] || { echo "::error::no FROM node:<major> in ${{ matrix.dir }}/Dockerfile"; exit 1; }
+          echo "major=$v" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
-          node-version: ${{ matrix.node }}
+          node-version: ${{ steps.node.outputs.major }}
 
       - name: Install
         working-directory: ${{ matrix.dir }}
