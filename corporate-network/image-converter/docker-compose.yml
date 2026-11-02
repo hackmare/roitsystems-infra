@@ -11,6 +11,9 @@ networks:
   corporate-backend:
     external: true
 
+volumes:
+  imagemagick-tmp: {}            # imagemagick-service's /tmp: scratch only, nothing kept
+
 services:
   image-converter-api:
     logging: *journald
@@ -49,10 +52,12 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
-    # Its inputs and outputs, and ImageMagick's own spill, go to /tmp: in memory, so
-    # sized inside mem_limit, with policy.xml's disk limit to match.
-    tmpfs:
-      - /tmp:size=256m
+    # Its inputs and outputs, and ImageMagick's pixel cache when it spills (policy.xml:
+    # map 512 MiB, disk 1 GiB), go to /tmp. That stays on disk, a volume, not a tmpfs:
+    # a tmpfs is RAM inside mem_limit, and with it a 16 MP image was refused that main
+    # converts (github-68, github-86 on #127). The rest of the filesystem is read-only.
+    volumes:
+      - imagemagick-tmp:/tmp
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
