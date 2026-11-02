@@ -164,7 +164,7 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
 
 ```
 1. Admin UI submits job: POST /api/admin/image-jobs with file + params
-2. Fastify validates Bearer token
+2. The image-converter API checks the admin session cookie
 3. Fastify generates transaction_id (UUID)
 4. Fastify stores file in temp location or as base64
 5. Fastify stores job doc in CouchDB: { _id: transaction_id, status: 'queued', params, filename }
@@ -203,10 +203,9 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
 ## API Design Patterns
 
 ### Authentication
-- **Bearer token** in `Authorization` header
-- Token is a 64-character hex string (256 bits)
-- No JWT — just opaque secret, validated against `ADMIN_TOKEN` env var
-- Scoped to `/api/admin/*` and `/admin` routes only
+- **Google sign-in**, limited to the accounts in `ADMIN_EMAILS`
+- An 8-hour `session` cookie signed with `SESSION_SECRET` (HMAC-SHA256); no JWT, no API tokens
+- Checked by the contact-inbox admin API and the image-converter API
 
 ### Rate Limiting
 - **Per-IP, sliding window** via @fastify/rate-limit
@@ -369,9 +368,8 @@ Used for deduplication and retry state:
 - **DigitalOcean Firewall**: Restrict SSH (port 22) to known IPs
 
 ### Authentication
-- **Admin API**: Bearer token in env var, non-guessable
+- **Admin API and pages**: Google sign-in, then a signed HttpOnly session cookie
 - **Contact form**: No auth required; rate-limiting provides DOS protection
-- **Browser admin UI**: Token stored in `sessionStorage`; sent as `Authorization` header
 
 ### Data Protection
 - **PII in logs**: Redacted by Fastify logger (`email`, `name` fields)
@@ -418,9 +416,8 @@ curl -X POST http://localhost:3000/api/contact \
   -H "Content-Type: application/json" \
   -d '{"name":"Test","email":"test@example.com","message":"Test"}'
 
-# List messages (with admin token)
-curl -H "Authorization: Bearer dev-token" \
-  http://localhost:3000/api/admin/messages
+# Admin endpoints need a browser session: sign in at
+# http://localhost:3000/auth/login, then open http://localhost:3000/admin
 ```
 
 ### Production Monitoring

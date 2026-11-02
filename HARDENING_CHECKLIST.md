@@ -7,7 +7,8 @@ Items marked ⚠️ are known risks with documented mitigations or upgrade paths
 
 - ✅ No secrets committed to git — `.gitignore` excludes `.env` and all variants
 - ✅ `.env.example` contains only placeholder values with generation instructions
-- 🔲 `ADMIN_TOKEN` generated with `openssl rand -hex 32` in production
+- 🔲 `SESSION_SECRET` generated with `openssl rand -hex 32` in production
+- 🔲 `ADMIN_EMAILS` lists only the intended admins in production
 - 🔲 `COUCHDB_PASSWORD` is a unique, strong, non-dictionary value in production
 - 🔲 `CORS_ORIGINS` set to exact production domain only
 - 🔲 `LOG_LEVEL` set to `info` (not `debug`) in production
@@ -50,8 +51,10 @@ Items marked ⚠️ are known risks with documented mitigations or upgrade paths
 - ✅ Input validation: all fields validated and length-capped via Zod
 - ✅ Honeypot field (`hp`) catches naive bots without CAPTCHA
 - ✅ PII redacted from structured logs (email, name fields)
-- ✅ Admin token comparison uses constant-time HMAC equality (timing-safe)
-- ✅ Admin endpoints return 503 when `ADMIN_TOKEN` is not configured
+- ✅ Admin access is Google sign-in, limited to `ADMIN_EMAILS`
+- ✅ Session cookie signatures are checked in constant time (timing-safe)
+- ✅ The APIs refuse to start without a `SESSION_SECRET` of 32+ characters and at least one `ADMIN_EMAILS` entry
+- ✅ `/auth/login` returns 503 when Google sign-in is not configured
 - ✅ CouchDB error internals (paths, response bodies) not exposed to API callers
 - ✅ CouchDB and webhook fetches have 10-second timeouts
 

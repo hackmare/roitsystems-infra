@@ -34,7 +34,11 @@ CADDY_EMAIL=dev@example.com
 COUCHDB_USER=admin
 COUCHDB_PASSWORD=devpassword
 CORS_ORIGINS=http://localhost:3000
-ADMIN_TOKEN=dev-token-12345
+NODE_ENV=development   # sign-in cookies work over plain http only outside production
+GOOGLE_CLIENT_ID=<from Google Cloud Console>
+GOOGLE_CLIENT_SECRET=<from Google Cloud Console>
+ADMIN_EMAILS=you@example.com
+SESSION_SECRET=<output of: openssl rand -hex 32>
 RATE_LIMIT_MAX=100
 RATE_LIMIT_WINDOW_MS=900000
 LOG_LEVEL=debug
@@ -76,7 +80,9 @@ curl -X POST http://localhost:3000/api/contact \
 ### 7. Access admin panel
 
 - Open **http://localhost:3000/admin** in your browser
-- Enter `ADMIN_TOKEN` from `.env`
+- Sign in with Google, using an account listed in `ADMIN_EMAILS`. The Google
+  client needs `http://localhost:3000/auth/callback` as a redirect URI (see
+  [GOOGLE_OAUTH_SETUP.md](GOOGLE_OAUTH_SETUP.md))
 - Should see message list (empty on first run)
 
 ---
@@ -143,8 +149,15 @@ COUCHDB_PASSWORD=$(openssl rand -hex 32)
 # Allowed CORS origins (your public site)
 CORS_ORIGINS=https://roitsystems.ca
 
-# Strong admin token (for accessing /admin and /api/admin/*)
-ADMIN_TOKEN=$(openssl rand -hex 32)
+# Google sign-in for the admin pages (see GOOGLE_OAUTH_SETUP.md)
+GOOGLE_CLIENT_ID=<production client ID>
+GOOGLE_CLIENT_SECRET=<production client secret>
+
+# Google accounts allowed into the admin pages (comma-separated, at least one)
+ADMIN_EMAILS=admin@example.com
+
+# Signs admin session cookies (at least 32 characters, or the APIs won't start)
+SESSION_SECRET=$(openssl rand -hex 32)
 
 # Logging level (info for production)
 LOG_LEVEL=info
@@ -163,7 +176,7 @@ NATS_URL=nats://nats:4222
 COUCHDB_URL=http://couchdb:5984
 ```
 
-**Save the `ADMIN_TOKEN` and `COUCHDB_PASSWORD` to a secure location.**
+**Save `SESSION_SECRET`, `GOOGLE_CLIENT_SECRET` and `COUCHDB_PASSWORD` to a secure location.**
 
 ### 6. Configure DNS
 
@@ -221,7 +234,8 @@ curl -X POST https://api.roitsystems.ca/api/contact \
 
 ### 11. Access admin panel
 
-Open **https://api.roitsystems.ca/admin** and enter your `ADMIN_TOKEN`.
+Open `/corporate-network/contact/admin` on your API domain and sign in with
+Google, using an account listed in `ADMIN_EMAILS`.
 
 ---
 
@@ -395,7 +409,8 @@ docker compose up -d --build
 ## Security Checklist
 
 - [ ] `.env` file is in `.gitignore` and never committed
-- [ ] `ADMIN_TOKEN` is a cryptographically random 64-character hex string
+- [ ] `SESSION_SECRET` is a random value of at least 32 characters (`openssl rand -hex 32`)
+- [ ] `ADMIN_EMAILS` lists only the people who should be admins
 - [ ] `COUCHDB_PASSWORD` is a strong, unique password
 - [ ] `API_DOMAIN` points to the correct droplet via DNS
 - [ ] HTTPS/TLS is working (`curl https://...` returns valid cert)

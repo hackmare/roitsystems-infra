@@ -33,12 +33,12 @@ docker compose up -d --build
 |----------|-------------|
 | `API_DOMAIN` | Public hostname, e.g. `api.roitsystems.ca` |
 | `CADDY_EMAIL` | Email for Let's Encrypt TLS cert |
-| `CORPORATE_NETWORK_AUTH_USER` | Username for the `/corporate-network` HTTP Basic auth gate |
-| `CORPORATE_NETWORK_AUTH_HASH` | Caddy hashed password for the `/corporate-network` HTTP Basic auth gate |
 | `COUCHDB_USER` | CouchDB admin username |
 | `COUCHDB_PASSWORD` | CouchDB admin password (make it strong) |
 | `CORS_ORIGINS` | Comma-separated allowed origins, e.g. `https://roitsystems.ca` |
-| `ADMIN_TOKEN` | Secret for the admin API — generate with `openssl rand -hex 32` |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google sign-in for the admin pages (see [GOOGLE_OAUTH_SETUP.md](GOOGLE_OAUTH_SETUP.md)) |
+| `ADMIN_EMAILS` | Comma-separated Google accounts allowed in as admins; the APIs won't start without at least one |
+| `SESSION_SECRET` | Signs admin session cookies; at least 32 characters (`openssl rand -hex 32`), or the APIs won't start |
 | `RATE_LIMIT_MAX` | Max contact submissions per window per IP (default: 10) |
 | `RATE_LIMIT_WINDOW_MS` | Rate limit window in ms (default: 900000 = 15 min) |
 | `NOTIFICATION_WEBHOOK_URL` | Optional webhook for notifications (Signal/Telegram relay) |
@@ -52,21 +52,26 @@ docker compose up -d --build
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `POST` | `/api/contact` | None (rate-limited) | Submit a contact message |
-| `GET` | `/api/admin/messages` | Bearer token | List all messages (JSON) |
-| `GET` | `/api/admin/messages/:id` | Bearer token | Get a single message (JSON) |
+| `GET` | `/api/admin/messages` | Admin session | List all messages (JSON) |
+| `GET` | `/api/admin/messages/:id` | Admin session | Get a single message (JSON) |
 
 ### Image Converter
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/api/admin/image-jobs` | Bearer token (rate-limited) | Submit an image conversion job |
-| `GET` | `/api/admin/image-jobs/:transaction_id` | Bearer token | Poll for job status and result |
+| `POST` | `/corporate-network/image-converter/api/image-jobs` | Admin session (rate-limited) | Submit an image conversion job |
+| `GET` | `/corporate-network/image-converter/api/image-jobs/:transaction_id` | Admin session | Poll for job status and result |
 
 ### Admin UI
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/health` | None | Liveness check |
-| `GET` | `/admin` | Token (browser UI) | Admin message viewer |
-| `GET` | `/admin/image-convert` | Token (browser UI) | Image converter admin tool |
+| `GET` | `/corporate-network/contact/admin` | Admin session (for its data) | Admin message viewer |
+| `GET` | `/corporate-network/image-converter/convert` | Admin session (for its data) | Image converter admin tool |
+| `GET` | `/auth/login`, `/auth/callback`, `/auth/logout` | None | Google sign-in and sign-out |
+
+"Admin session" is the `session` cookie set after Google sign-in, for an account
+listed in `ADMIN_EMAILS`. A request without one is redirected to
+`/auth/login`; a session for any other account gets `403`.
 
 ## Contact form payload
 
@@ -122,7 +127,7 @@ Multipart form data: field `file` contains the binary image, field `params` cont
 }
 ```
 
-Poll `GET /api/admin/image-jobs/:transaction_id` with the `transaction_id` above. When `status === "done"`, the response includes `data` (base64-encoded PNG):
+Poll `GET /corporate-network/image-converter/api/image-jobs/:transaction_id` with the `transaction_id` above. When `status === "done"`, the response includes `data` (base64-encoded PNG):
 
 ```json
 {
@@ -135,19 +140,17 @@ Poll `GET /api/admin/image-jobs/:transaction_id` with the `transaction_id` above
 
 ## Admin access
 
-All `/corporate-network` pages and tools are protected by Caddy HTTP Basic auth before the application UIs load. Generate the password hash with:
-
-```bash
-docker run --rm caddy:2 caddy hash-password --plaintext 'your-strong-password'
-```
-
-Set `CORPORATE_NETWORK_AUTH_USER` and `CORPORATE_NETWORK_AUTH_HASH` in `.env`, then deploy/reload Caddy.
+The admin pages and APIs use Google sign-in. Only the accounts listed in
+`ADMIN_EMAILS` get in. Setting up the Google client is described in
+[GOOGLE_OAUTH_SETUP.md](GOOGLE_OAUTH_SETUP.md).
 
 ### Message Viewer
-Open `https://api.roitsystems.ca/admin` in your browser and enter the `ADMIN_TOKEN`. View all contact messages, their status, and AI-generated insights.
+Open `/corporate-network/contact/admin` on the API domain and sign in with
+Google. View all contact messages, their status, and AI-generated insights.
 
 ### Image Converter
-Open `https://api.roitsystems.ca/admin/image-convert` in your browser and enter the `ADMIN_TOKEN`. Upload images and convert them using ImageMagick with:
+Open `/corporate-network/image-converter/convert` on the API domain and sign in
+with Google. Upload images and convert them using ImageMagick with:
 - Format conversion (PNG, JPG, WebP, GIF, TIFF, BMP, etc.)
 - Resize with aspect ratio lock
 - Rotation, trim, blur, sharpen
@@ -155,24 +158,8 @@ Open `https://api.roitsystems.ca/admin/image-convert` in your browser and enter 
 - Batch history tracking
 
 ### API Access
-```bash
-# List messages
-curl -H "Authorization: Bearer $ADMIN_TOKEN" https://api.roitsystems.ca/api/admin/messages
-
-# Get a single message
-curl -H "Authorization: Bearer $ADMIN_TOKEN" https://api.roitsystems.ca/api/admin/messages/{message_id}
-
-# Submit image conversion job
-curl -X POST \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -F "file=@image.png" \
-  -F "params={\"format\":\"webp\",\"quality\":85}" \
-  https://api.roitsystems.ca/api/admin/image-jobs
-
-# Poll for job status
-curl -H "Authorization: Bearer $ADMIN_TOKEN" \
-  https://api.roitsystems.ca/api/admin/image-jobs/{transaction_id}
-```
+The admin APIs accept only the browser session cookie; there are no API tokens.
+A session lasts 8 hours, and `/auth/logout` ends it.
 
 ## Documentation
 

@@ -69,9 +69,9 @@ unreachable from the Internet, just no longer Docker-network-only. See
 
 ### API (Node.js / TypeScript / Fastify)
 - `POST /api/contact` — public, rate-limited (10 req / 15 min per IP)
-- `GET /api/admin/messages` — private, Bearer token required
-- `GET /api/admin/messages/:id` — private, Bearer token required
-- `GET /admin` — admin SPA (authentication handled client-side)
+- `GET /api/admin/messages` — private, admin session required
+- `GET /api/admin/messages/:id` — private, admin session required
+- `GET /admin` — admin page; its data needs an admin session (Google sign-in at `/auth/login`)
 - `GET /health` — liveness probe
 
 ### Worker (Node.js / TypeScript)

@@ -1,5 +1,11 @@
 # Security Hardening Notes — roitsystems-infra
 
+> **Note:** these notes record an assessment made when the admin API used a
+> bearer token (`ADMIN_TOKEN`). Admin access is now Google sign-in, limited to
+> `ADMIN_EMAILS` and backed by a session cookie signed with `SESSION_SECRET`
+> (#98; see [GOOGLE_OAUTH_SETUP.md](GOOGLE_OAUTH_SETUP.md)). Risks 1 and 3 and
+> the token changes below describe code that no longer exists.
+
 ## Assessment Summary
 
 Well-structured backend: CORS, Zod validation, honeypot, PII log redaction, and

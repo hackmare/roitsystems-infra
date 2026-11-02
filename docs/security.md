@@ -39,9 +39,13 @@ This stack accepts public contact form submissions and stores them privately. Th
 
 ### Admin Access
 
-- `GET /api/admin/messages` and `GET /api/admin/messages/:id` require `Authorization: Bearer <ADMIN_TOKEN>`.
-- `ADMIN_TOKEN` is a 256-bit random hex string (generated with `openssl rand -hex 32`).
-- The token is never logged or returned in any response.
+- Admins sign in with Google. Only accounts listed in `ADMIN_EMAILS` are let in.
+- After sign-in the API sets an 8-hour `session` cookie (HttpOnly, SameSite=Lax,
+  Secure in production), signed with `SESSION_SECRET` (HMAC-SHA256). The admin
+  APIs check its signature in constant time, and its expiry, on every request.
+- The contact-inbox and image-converter APIs refuse to start unless
+  `SESSION_SECRET` is at least 32 characters and `ADMIN_EMAILS` names someone.
+- There are no API tokens; the `Authorization` header is redacted from logs.
 - The admin UI (`/admin`) is excluded from search engine indexing via `<meta name="robots" content="noindex, nofollow">`.
 
 ### Secrets
@@ -64,7 +68,8 @@ This stack accepts public contact form submissions and stores them privately. Th
 
 ## Hardening Checklist (Pre-Production)
 
-- [ ] `ADMIN_TOKEN` generated with `openssl rand -hex 32`
+- [ ] `SESSION_SECRET` generated with `openssl rand -hex 32`
+- [ ] `ADMIN_EMAILS` lists only the intended admins
 - [ ] `COUCHDB_PASSWORD` is unique, strong, and not a dictionary word
 - [ ] `CORS_ORIGINS` set to exact production domain only
 - [ ] Firewall: only ports 22, 80, 443 open on the droplet
