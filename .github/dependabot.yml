@@ -30,6 +30,12 @@ updates:
           - "fastify"
           - "@fastify/*"
 
+  # Base image (pinned to an exact Node version in the Dockerfile).
+  - package-ecosystem: docker
+    directory: "/corporate-network/contact-inbox/api"
+    schedule:
+      interval: weekly
+
   - package-ecosystem: npm
     directory: "/corporate-network/contact-inbox/worker"
     schedule:
