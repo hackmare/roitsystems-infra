@@ -120,11 +120,14 @@ updates:
     schedule:
       interval: weekly
 
-  # Caddy, pinned by version and digest in the infrastructure compose file. It fronts
-  # Vector Weather too: each update recreates it, so deploying one needs Morgane's go.
+  # The infrastructure compose file's images, each pinned by version and digest: Caddy
+  # and NATS serve Vector Weather too, and CouchDB holds the contact inbox's data. Each
+  # update restarts one of them, so deploying it needs Morgane's go.
   - package-ecosystem: docker-compose
     directory: "/infrastructure"
     schedule:
       interval: weekly
     allow:
       - dependency-name: caddy
+      - dependency-name: nats
+      - dependency-name: couchdb
