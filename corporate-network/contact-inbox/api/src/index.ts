@@ -10,6 +10,7 @@ import { authRoutes, requireGoogleAuth } from './routes/auth';
 import { connectNats, closeNats } from './services/nats';
 import { ensureDatabases } from './services/couchdb';
 import { sessionConfig } from './session';
+import { clientKey } from './client-key';
 
 const server = Fastify({
   logger: {
@@ -20,7 +21,8 @@ const server = Fastify({
       remove: false,
     },
   },
-  trustProxy: true,
+  // Only the immediate peer (Caddy) is trusted for X-Forwarded-For: one hop.
+  trustProxy: (_address: string, hop: number) => hop === 0,
 });
 
 async function bootstrap() {
@@ -57,14 +59,26 @@ async function bootstrap() {
     return reply.type('text/html').send(dashboardHtml);
   });
 
-  // OAuth flow
-  await server.register(authRoutes, { prefix: '/auth' });
+  // OAuth flow, rate-limited per client (see client-key.ts)
+  await server.register(
+    async (instance) => {
+      await instance.register(rateLimit, { max: 20, timeWindow: '1 minute', keyGenerator: clientKey });
+      await instance.register(authRoutes);
+    },
+    { prefix: '/auth' },
+  );
 
   // Admin SPA — served at /admin, auth checked by API routes
   server.get('/admin', async (_request, reply) => reply.type('text/html').send(ADMIN_HTML));
 
-  // Admin API (requires Google auth via session cookie)
-  await server.register(adminRoutes, { prefix: '/api/admin' });
+  // Admin API (requires Google auth via session cookie), rate-limited per client
+  await server.register(
+    async (instance) => {
+      await instance.register(rateLimit, { max: 120, timeWindow: '1 minute', keyGenerator: clientKey });
+      await instance.register(adminRoutes);
+    },
+    { prefix: '/api/admin' },
+  );
 
   // Public contact form endpoint — rate-limited
   await server.register(
@@ -72,7 +86,9 @@ async function bootstrap() {
       await instance.register(rateLimit, {
         max: parseInt(process.env.RATE_LIMIT_MAX || '10'),
         timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
+        keyGenerator: clientKey,
         errorResponseBuilder: () => ({
+          statusCode: 429,
           error: 'Too many requests. Please wait before submitting again.',
         }),
       });
