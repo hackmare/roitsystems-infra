@@ -245,6 +245,8 @@ Logs are written to Docker's JSON log driver by default. For persistent log ship
 (cd infrastructure && docker compose exec couchdb sh -c \
   'curl -s -u "$COUCHDB_USER:$COUCHDB_PASSWORD" "http://localhost:5984/contact_messages/_all_docs?include_docs=true"')
 
-# Check NATS stream info
-(cd infrastructure && docker compose exec nats nats stream info CONTACT_MESSAGES -s nats://localhost:4222)
+# Check NATS stream info (the nats image has no shell or CLI, so use a throwaway
+# nats-box container on the internal network, with a NATS user from nats.conf)
+docker run --rm --network corporate-backend natsio/nats-box:0.17.0 \
+  nats -s nats://nats:4222 --user <nats user> --password <its password> stream info CONTACT_MESSAGES
 ```

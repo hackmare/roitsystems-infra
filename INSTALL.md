@@ -271,14 +271,16 @@ docker volume ls | grep couchdb-data
 
 ### Back up the volume
 
-Stop CouchDB first, so the copy is consistent, then start it again:
+Stop CouchDB first, so the copy is consistent, then start it again. While it's
+stopped, new contact messages and image jobs can't be saved, so pick a quiet
+moment:
 
 ```bash
 (cd infrastructure && docker compose stop couchdb)
 docker run --rm \
   -v <couchdb volume>:/data:ro \
   -v /path/to/backup:/backup \
-  ubuntu tar czf /backup/couchdb-backup.tar.gz -C /data .
+  ubuntu:24.04 tar czf /backup/couchdb-backup.tar.gz -C /data .
 (cd infrastructure && docker compose start couchdb)
 ```
 
@@ -289,7 +291,7 @@ docker run --rm \
 docker run --rm \
   -v <couchdb volume>:/data \
   -v /path/to/backup:/backup \
-  ubuntu tar xzf /backup/couchdb-backup.tar.gz -C /data
+  ubuntu:24.04 tar xzf /backup/couchdb-backup.tar.gz -C /data
 (cd infrastructure && docker compose start couchdb)
 ```
 
