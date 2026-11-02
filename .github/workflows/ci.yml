@@ -44,6 +44,19 @@ jobs:
           done
           exit $fail
 
+  deploy-gate:
+    # The forced command behind the manual deploy workflow (scripts/deploy-gate.sh).
+    name: deploy gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test the deploy gate
+        run: scripts/test-deploy-gate.sh
+
   node:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
