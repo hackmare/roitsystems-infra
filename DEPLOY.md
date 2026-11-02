@@ -291,8 +291,9 @@ getent group adm systemd-journal   # who can read the journal: should list no on
 
 `infrastructure/journald/30-retention.conf` sets:
 - `Storage=persistent`, so logs survive a reboot;
-- `MaxRetentionSec=30day`, with `MaxFileSec=1day`: journald deletes whole files,
-  so it starts one a day;
+- `MaxRetentionSec=29day`, with `MaxFileSec=1day`: journald deletes a whole file
+  once its first entry passes the limit, and checks as it starts each day's file,
+  so 29 days keeps every line within 30;
 - `SystemMaxUse=2G`;
 - a higher rate limit (`RateLimitBurst=50000` per 30 s), because all containers
   share `docker.service`'s.
