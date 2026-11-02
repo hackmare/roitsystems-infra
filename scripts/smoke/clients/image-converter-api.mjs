@@ -104,6 +104,31 @@ for (const [id, event, expect] of [
   check(!!doc, `image.ready (${event.success ? 'success' : 'failure'}) → job ${id} marked ${event.success ? 'done' : 'error'}`);
 }
 
+// Conversion settings: accepted ones reach imagemagick-service unchanged in the
+// image.convert message; out-of-range ones are refused, with the service's limits.
+const convert = nc.subscribe('image.convert');
+const convertEvents = [];
+(async () => { for await (const m of convert) convertEvents.push(JSON.parse(sc.decode(m.data))); })();
+const settings = { quality: 70, width: 640, height: 480, lockAspectRatio: true, rotate: 90, trim: true,
+  colorspace: 'Gray', background: '#ffffff', flatten: true, transparentBackground: false,
+  density: 150, blur: 0.5, sharpen: 1.5 };
+const accepted = await submitJob({ format_out: 'webp', ...settings });
+const queued = accepted.status === 202 ? await accepted.json() : {};
+check(accepted.status === 202 && !!queued.transaction_id, `POST /api/image-jobs (all settings) → ${accepted.status}, expect 202`);
+const event = await until(() => convertEvents.find((e) => e.transaction_id === queued.transaction_id));
+const sent = event?.params || {};
+check(Object.entries(settings).every(([k, v]) => sent[k] === v) && event.format_out === 'webp' && event.data === 'aGk=',
+  `image.convert carries every setting unchanged (${JSON.stringify(sent)})`);
+convert.unsubscribe();
+for (const [what, body] of [
+  ['width over 16384', { width: 16385 }], ['height 0', { height: 0 }], ['quality 101', { quality: 101 }],
+  ['density 601', { density: 601 }], ['rotate 360', { rotate: 360 }], ['blur 11', { blur: 11 }],
+  ['sharpen -1', { sharpen: -1 }], ['colorspace other', { colorspace: 'XYZ' }], ['background not hex', { background: 'red' }],
+]) {
+  const r = await submitJob(body);
+  check(r.status === 400, `POST /api/image-jobs (${what}) → ${r.status}, expect 400`);
+}
+
 await nc.close();
 console.log(failures ? `${failures} check(s) failed` : 'all checks passed');
 process.exit(failures ? 1 : 0);
