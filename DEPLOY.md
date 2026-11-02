@@ -135,7 +135,7 @@ Don't start unless all of these hold:
    the values:
 
    ```bash
-   sed -n 's/^SESSION_SECRET=//p' .env | tr -d '\n' | wc -c   # 32 or more
+   sed -n 's/^SESSION_SECRET=//p' .env | tr -d "\"'\n" | wc -c   # 32 or more (quotes not counted)
    sed -n 's/^ADMIN_EMAILS=//p' .env | tr ',' '\n' | grep -c '[^[:space:]]'  # 1 or more
    ```
 5. **Open PRs touching the target** are merged or deliberately left for a
