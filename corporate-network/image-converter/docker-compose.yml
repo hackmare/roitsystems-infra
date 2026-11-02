@@ -16,6 +16,12 @@ services:
     logging: *journald
     build: ./api
     container_name: image-converter-api
+    # Least privilege (as anchor-weather-notifications, #125): the image's node user, a
+    # read-only filesystem, no Linux capabilities, no privilege escalation.
+    user: node
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     environment:
       PORT: 3000
       NODE_ENV: ${NODE_ENV:-production}
@@ -37,6 +43,16 @@ services:
     logging: *journald
     build: ./imagemagick-service
     container_name: imagemagick-service
+    # Least privilege (as anchor-weather-notifications, #125): the image's node user, a
+    # read-only filesystem, no Linux capabilities, no privilege escalation.
+    user: node
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # Its inputs and outputs, and ImageMagick's own spill, go to /tmp: in memory, so
+    # sized inside mem_limit, with policy.xml's disk limit to match.
+    tmpfs:
+      - /tmp:size=256m
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
