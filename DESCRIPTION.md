@@ -163,7 +163,7 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
 ### Image Conversion Job
 
 ```
-1. Admin UI submits job: POST /api/admin/image-jobs with file + params
+1. Admin UI submits job: POST /corporate-network/image-converter/api/image-jobs with file + params
 2. The image-converter API checks the admin session cookie
 3. Fastify generates transaction_id (UUID)
 4. Fastify stores file in temp location or as base64
@@ -176,7 +176,7 @@ All backed by **durable storage** (CouchDB), **event streaming** (NATS JetStream
 11. Worker encodes result as base64
 12. Worker publishes 'image.ready': { transaction_id, data: base64 }
 13. Worker updates CouchDB: { _id: transaction_id, status: 'done', data: base64, ... }
-14. Admin UI polls GET /api/admin/image-jobs/:transaction_id
+14. Admin UI polls GET /corporate-network/image-converter/api/image-jobs/:transaction_id
 15. Frontend detects status === 'done', displays preview, shows download button
 16. User clicks download → browser decodes base64 and saves file
 ```
