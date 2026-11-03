@@ -11,11 +11,20 @@ networks:
   corporate-backend:
     external: true
 
+volumes:
+  imagemagick-tmp: {}            # imagemagick-service's /tmp: scratch only, nothing kept
+
 services:
   image-converter-api:
     logging: *journald
     build: ./api
     container_name: image-converter-api
+    # Least privilege (as anchor-weather-notifications, #125): the image's node user, a
+    # read-only filesystem, no Linux capabilities, no privilege escalation.
+    user: node
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     environment:
       PORT: 3000
       NODE_ENV: ${NODE_ENV:-production}
@@ -37,6 +46,18 @@ services:
     logging: *journald
     build: ./imagemagick-service
     container_name: imagemagick-service
+    # Least privilege (as anchor-weather-notifications, #125): the image's node user, a
+    # read-only filesystem, no Linux capabilities, no privilege escalation.
+    user: node
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # Its inputs and outputs, and ImageMagick's pixel cache when it spills (policy.xml:
+    # map 512 MiB, disk 1 GiB), go to /tmp. That stays on disk, a volume, not a tmpfs:
+    # a tmpfs is RAM inside mem_limit, and with it a 16 MP image was refused that main
+    # converts (github-68, github-86 on #127). The rest of the filesystem is read-only.
+    volumes:
+      - imagemagick-tmp:/tmp
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}

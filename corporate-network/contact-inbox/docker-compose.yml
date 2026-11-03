@@ -16,6 +16,12 @@ services:
     logging: *journald
     build: ./api
     container_name: contact-inbox-api
+    # Least privilege (as anchor-weather-notifications, #125): the image's node user, a
+    # read-only filesystem, no Linux capabilities, no privilege escalation.
+    user: node
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     environment:
       PORT: 3000
       NODE_ENV: ${NODE_ENV:-production}
@@ -42,6 +48,12 @@ services:
     logging: *journald
     build: ./worker
     container_name: contact-inbox-worker
+    # Least privilege (as anchor-weather-notifications, #125): the image's node user, a
+    # read-only filesystem, no Linux capabilities, no privilege escalation.
+    user: node
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -60,6 +72,12 @@ services:
     logging: *journald
     build: ./notification-service
     container_name: contact-inbox-notification
+    # Least privilege (as anchor-weather-notifications, #125): the image's node user, a
+    # read-only filesystem, no Linux capabilities, no privilege escalation.
+    user: node
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
