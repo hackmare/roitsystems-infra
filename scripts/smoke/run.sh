@@ -7,12 +7,16 @@
 # Needs only bash and docker. Everything runs on a private docker network with a
 # random suffix and is removed on exit, so parallel runs don't collide. NATS runs
 # with JetStream where a service uses it, and CouchDB starts only for services
-# that need it (clients/<service>.conf). The test client (clients/<service>.mjs) is
-# copied into the running service container and run there with the image's own
-# node and node_modules. Exits non-zero on any failure.
+# that need it (clients/<service>.conf). The service starts as prod runs it: with its
+# compose service's user, read_only, capabilities, security_opt, tmpfs, volumes and
+# mem_limit (COMPOSE_FILE and COMPOSE_SERVICE in its .conf). The test client
+# (clients/<service>.mjs) is run inside the service container with the image's own
+# node and node_modules, sent on stdin, so a read-only filesystem doesn't stop it.
+# Exits non-zero on any failure.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/../.." && pwd)
 NATS_IMAGE=nats:2.10-alpine
 COUCH_IMAGE=couchdb:3.4
 
@@ -32,9 +36,11 @@ fi
 ID=smoke-$SERVICE-$RANDOM$RANDOM
 NET=$ID
 SVC=$ID-svc
+VOLUMES=()
 cleanup() {
   docker rm -f "$SVC" "$ID-nats" "$ID-couch" >/dev/null 2>&1 || true
   docker network rm "$NET" >/dev/null 2>&1 || true
+  for v in ${VOLUMES[@]+"${VOLUMES[@]}"}; do docker volume rm "$v" >/dev/null 2>&1 || true; done
 }
 trap cleanup EXIT
 
@@ -51,7 +57,48 @@ COUCH_PASS=smoke-only-password
 JETSTREAM=0
 COUCH=0
 ENV=()
+COMPOSE_FILE=
+COMPOSE_SERVICE=
 [[ -f $HERE/clients/$SERVICE.conf ]] && source "$HERE/clients/$SERVICE.conf"
+
+# Its compose service's hardening, as `docker run` arguments. Parsed by the image's
+# own node (this script needs only bash and docker). A named volume becomes a fresh
+# one for this run; anything not handled here fails rather than being left out.
+[[ -n $COMPOSE_FILE && -n $COMPOSE_SERVICE ]] || {
+  echo "clients/$SERVICE.conf must name COMPOSE_FILE and COMPOSE_SERVICE: the service runs as prod does" >&2; exit 2; }
+HARDEN_JS='
+const all = JSON.parse(require("fs").readFileSync(0, "utf8")).services || {};
+const svc = all[process.argv[1]];
+if (!svc) { console.error(`no compose service ${process.argv[1]}`); process.exit(3); }
+const out = [];
+if (svc.user) out.push(`--user=${svc.user}`);
+if (svc.read_only) out.push("--read-only");
+for (const c of svc.cap_drop || []) out.push(`--cap-drop=${c}`);
+for (const c of svc.cap_add || []) out.push(`--cap-add=${c}`);
+for (const o of svc.security_opt || []) out.push(`--security-opt=${o}`);
+for (const t of [].concat(svc.tmpfs || [])) out.push(`--tmpfs=${t}`);
+for (const v of svc.volumes || []) {
+  if (v.type !== "volume" || !v.source) { console.error(`compose volume ${JSON.stringify(v)}: only named volumes are handled`); process.exit(3); }
+  out.push(`volume ${v.source} ${v.target}`);
+}
+if (svc.mem_limit) out.push(`--memory=${svc.mem_limit}`);
+if (svc.memswap_limit) out.push(`--memory-swap=${svc.memswap_limit}`);
+console.log(out.join("\n"));'
+HARDEN=()
+compose_json=$(docker compose -f "$ROOT/$COMPOSE_FILE" config --format json 2>/dev/null) || {
+  echo "docker compose can't read $COMPOSE_FILE" >&2; exit 2; }
+while IFS= read -r flag; do
+  [[ -n $flag ]] || continue
+  if [[ $flag == volume\ * ]]; then
+    read -r _ source target <<<"$flag"
+    docker volume create "$ID-$source" >/dev/null
+    VOLUMES+=("$ID-$source")
+    HARDEN+=(-v "$ID-$source:$target")
+  else
+    HARDEN+=("$flag")
+  fi
+done < <(printf '%s' "$compose_json" | docker run --rm -i --network none --entrypoint node "$IMAGE" -e "$HARDEN_JS" "$COMPOSE_SERVICE")
+echo "smoke $SERVICE: as $COMPOSE_FILE's $COMPOSE_SERVICE: ${HARDEN[*]:-(no hardening set)}"
 
 docker network create "$NET" >/dev/null
 if [[ $JETSTREAM -eq 1 ]]; then
@@ -72,14 +119,13 @@ fi
 
 if declare -F setup >/dev/null; then setup; fi
 
-docker run -d --name "$SVC" --network "$NET" ${ENV[@]+"${ENV[@]}"} "$IMAGE" >/dev/null
+docker run -d --name "$SVC" --network "$NET" ${HARDEN[@]+"${HARDEN[@]}"} ${ENV[@]+"${ENV[@]}"} "$IMAGE" >/dev/null
 sleep 2
 
-docker cp "$HERE/clients/$SERVICE.mjs" "$SVC:/tmp/smoke-client.mjs"
 status=0
-docker exec -e NATS_URL="$NATS_URL" -e COUCH_URL="$COUCH_URL" -e COUCH_AUTH="$COUCH_USER:$COUCH_PASS" \
+docker exec -i -e NATS_URL="$NATS_URL" -e COUCH_URL="$COUCH_URL" -e COUCH_AUTH="$COUCH_USER:$COUCH_PASS" \
   -e SMOKE_TIMEOUT="${SMOKE_TIMEOUT:-20}" "$SVC" \
-  node /tmp/smoke-client.mjs || status=$?
+  node --input-type=module - <"$HERE/clients/$SERVICE.mjs" || status=$?
 
 if declare -F post_check >/dev/null; then post_check || status=1; fi
 
