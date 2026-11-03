@@ -70,6 +70,15 @@ HARDEN_JS='
 const all = JSON.parse(require("fs").readFileSync(0, "utf8")).services || {};
 const svc = all[process.argv[1]];
 if (!svc) { console.error(`no compose service ${process.argv[1]}`); process.exit(3); }
+// Every key is either applied below or known not to change how the container is
+// confined; any other key fails, so the smoke run is never looser than prod (github-68)
+const APPLIED = ["user", "read_only", "cap_drop", "cap_add", "security_opt", "tmpfs", "volumes",
+                 "mem_limit", "memswap_limit"];
+const NOT_CONFINEMENT = ["build", "image", "container_name", "environment", "networks", "restart",
+                         "logging", "command", "entrypoint", "depends_on", "healthcheck", "labels",
+                         "ports", "expose", "stop_grace_period", "working_dir"];
+const unknown = Object.keys(svc).filter((k) => !APPLIED.includes(k) && !NOT_CONFINEMENT.includes(k));
+if (unknown.length) { console.error(`compose keys run.sh does not apply yet: ${unknown.join(", ")}`); process.exit(3); }
 const out = [];
 if (svc.user) out.push(`--user=${svc.user}`);
 if (svc.read_only) out.push("--read-only");
@@ -79,14 +88,16 @@ for (const o of svc.security_opt || []) out.push(`--security-opt=${o}`);
 for (const t of [].concat(svc.tmpfs || [])) out.push(`--tmpfs=${t}`);
 for (const v of svc.volumes || []) {
   if (v.type !== "volume" || !v.source) { console.error(`compose volume ${JSON.stringify(v)}: only named volumes are handled`); process.exit(3); }
-  out.push(`volume ${v.source} ${v.target}`);
+  out.push(`volume ${v.source} ${v.target}${v.read_only ? ":ro" : ""}`);
 }
 if (svc.mem_limit) out.push(`--memory=${svc.mem_limit}`);
 if (svc.memswap_limit) out.push(`--memory-swap=${svc.memswap_limit}`);
 console.log(out.join("\n"));'
 HARDEN=()
-compose_json=$(docker compose -f "$ROOT/$COMPOSE_FILE" config --format json 2>/dev/null) || {
-  echo "docker compose can't read $COMPOSE_FILE" >&2; exit 2; }
+compose_err=$(mktemp)
+compose_json=$(docker compose -f "$ROOT/$COMPOSE_FILE" config --format json 2>"$compose_err") || {
+  echo "docker compose can't read $COMPOSE_FILE:" >&2; grep -v 'variable is not set' "$compose_err" >&2; rm -f "$compose_err"; exit 2; }
+rm -f "$compose_err"
 # Captured first, not read from a process substitution: set -e and pipefail don't see
 # a <(...)'s exit status, so a parser refusal would start the service unhardened (github-86)
 flags=$(printf '%s' "$compose_json" | docker run --rm -i --network none --entrypoint node "$IMAGE" -e "$HARDEN_JS" "$COMPOSE_SERVICE") || {
