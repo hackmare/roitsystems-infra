@@ -87,6 +87,10 @@ console.log(out.join("\n"));'
 HARDEN=()
 compose_json=$(docker compose -f "$ROOT/$COMPOSE_FILE" config --format json 2>/dev/null) || {
   echo "docker compose can't read $COMPOSE_FILE" >&2; exit 2; }
+# Captured first, not read from a process substitution: set -e and pipefail don't see
+# a <(...)'s exit status, so a parser refusal would start the service unhardened (github-86)
+flags=$(printf '%s' "$compose_json" | docker run --rm -i --network none --entrypoint node "$IMAGE" -e "$HARDEN_JS" "$COMPOSE_SERVICE") || {
+  echo "can't run $SERVICE as $COMPOSE_FILE's $COMPOSE_SERVICE sets it: refusing to test it any other way" >&2; exit 2; }
 while IFS= read -r flag; do
   [[ -n $flag ]] || continue
   if [[ $flag == volume\ * ]]; then
@@ -97,7 +101,7 @@ while IFS= read -r flag; do
   else
     HARDEN+=("$flag")
   fi
-done < <(printf '%s' "$compose_json" | docker run --rm -i --network none --entrypoint node "$IMAGE" -e "$HARDEN_JS" "$COMPOSE_SERVICE")
+done <<<"$flags"
 echo "smoke $SERVICE: as $COMPOSE_FILE's $COMPOSE_SERVICE: ${HARDEN[*]:-(no hardening set)}"
 
 docker network create "$NET" >/dev/null
