@@ -32,11 +32,10 @@
   }
 }
 
-vectorweather.ca, weather-vector.selkietech.ca {
+vectorweather.ca {
   import anchor_weather_headers
   # nginx inside the frontend container handles static files and /api/ → backend
-  # vectorweather.ca/weather-vector temporarily share the anchor-weather app
-  # until the commercial app is built — see DEPLOY.md
+  # vectorweather.ca is the one public address of the app — see DEPLOY.md
   reverse_proxy anchor-weather-frontend:80 {
     import to_upstream
   }
@@ -72,7 +71,7 @@ www.vectorweather.ca {
 # Authorization header (and POST bodies) on a cross-host redirect.
 # 302 rather than 301 until the move is settled: a cached 301 can't be
 # recalled from users' browsers.
-{$ANCHOR_DOMAIN}, vector-weather.selkietech.ca {
+{$ANCHOR_DOMAIN}, vector-weather.selkietech.ca, weather-vector.selkietech.ca {
   import anchor_weather_headers
   handle /api/* {
     reverse_proxy anchor-weather-frontend:80 {
