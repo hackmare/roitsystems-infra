@@ -41,7 +41,7 @@ services:
     logging: *journald
     # Exact version and digest (as Caddy's, above): NATS carries Vector Weather's messages too,
     # so an update restarts it under both. Dependabot proposes updates; deploy with Morgane's go.
-    image: nats:2.15.2@sha256:991242c32d2738ffd358fd6614dd96c735017b4b3b34bfdb2c52a072d66db211
+    image: nats:2.15.2@sha256:b6c40dcfe5ae9174dcafa9c43f800afb93b8b0ffcde02ac00efc6b66031d9a50
     restart: unless-stopped
     command: ["-c", "/etc/nats/nats.conf"]
     # nats.conf holds no secrets: each user's password is an environment
