@@ -268,13 +268,17 @@ stops at its first step, but add the reviewer rule before any secret.
 **To switch it off:** remove the `authorized_keys` line on the server. Deleting
 the Environment's secrets also stops it.
 
-## Log retention (30 days)
+## Log retention (1 GB, at most 30 days)
 
 Every container logs to the host's journal (the `journald` logging driver, set in
 each `docker-compose.yml` and tagged with the container's name). The journal
-keeps nothing older than 30 days, so request logs and the visitor addresses in
-them are kept 30 days at most. This applies to the host's own logs (sshd,
-fail2ban and the rest) too.
+holds at most 1 GB and nothing older than 30 days, whichever limit comes first.
+On the production host the 1 GB cap comes first, so the journal holds about a
+week of logs (Morgane, 2026-11-12, after the root disk filled up: the journal had
+reached 4.5 GB). Request logs and the visitor addresses in them are kept 30 days
+at most, and usually about a week. This applies to the host's own logs (sshd,
+fail2ban and the rest) too. For an incident, read or export the logs within a few
+days, before they rotate out.
 
 Size-based Docker log options (`max-size`, `max-file`) can't promise that: a
 quiet service would keep the same few megabytes for months.
@@ -294,13 +298,38 @@ getent group adm systemd-journal   # who can read the journal: should list no on
 - `MaxRetentionSec=29day`, with `MaxFileSec=1day`: journald deletes a whole file
   once its first entry passes the limit, and checks as it starts each day's file,
   so 29 days keeps every line within 30;
-- `SystemMaxUse=2G`;
+- `SystemMaxUse=1G`: the cap that applies in practice (about a week);
 - a higher rate limit (`RateLimitBurst=50000` per 30 s), because all containers
   share `docker.service`'s.
 
 The journal is readable by root and by members of the `adm` and
 `systemd-journal` groups, so the last command checks that those groups have no
 other members.
+
+**Lowering the cap to 1 GB (once, 2026-11-12; not during a deploy or rollout):**
+journald applies a new `SystemMaxUse` when it restarts. The one-off vacuum then
+trims the journal right away. Both run under both deploy locks, so neither
+happens during a deploy (`flock -n` stops at once if one is running; try again
+later).
+
+```bash
+cd /root/roitsystems-infra && git pull --ff-only
+journalctl --disk-usage                       # before (was 4.5 GB on 2026-11-12)
+systemd-analyze cat-config systemd/journald.conf | grep -E '^SystemMaxUse='   # 2G if the old drop-in is installed; nothing if it isn't
+flock -n /var/lock/anchor-weather-deploy.lock \
+  flock -n /var/lock/roitsystems-infra-deploy.lock \
+  sh -c 'install -D -m 0644 infrastructure/journald/30-retention.conf /etc/systemd/journald.conf.d/30-retention.conf \
+         && systemctl restart systemd-journald \
+         && journalctl --vacuum-size=1G'
+systemd-analyze cat-config systemd/journald.conf | grep -E '^(MaxRetentionSec|SystemMaxUse)='   # 29day, 1G
+journalctl --disk-usage                       # after: 1 GB or less
+df -h /
+journalctl -n 3 --no-pager                    # journald is writing again
+```
+
+Restarting journald loses no container lines: Docker writes to the journal socket, which systemd keeps open across the restart. The
+vacuum deletes only archived files, so the journal can sit slightly above 1 GB
+until the active file is archived.
 
 **Rolling out the compose change:** a new logging driver recreates every
 container of a target on its next deploy, and the old Docker log files go with
