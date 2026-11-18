@@ -37,7 +37,7 @@ rollback. The last section is a separate, unrelated change to Vector Weather's
 Records the starting point, so every later step can be compared with it.
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && git log -1 --format="%h %ad" --date=short && git status --short && git stash list && docker ps --format "{{.Names}} {{.Image}} {{.Status}}" | sort && df -h / | tail -1'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'cd /root/roitsystems-infra && git log -1 --format="%h %ad" --date=short && git status --short && git stash list && docker ps --format "{{.Names}} {{.Image}} {{.Status}}" | sort && df -h / | tail -1'
 ```
 
 **Expect:** `4c08bcb 2026-10-06`. No tracked files modified (every
@@ -55,7 +55,7 @@ guarded so that nothing happens if it is not a link. The live file stays.
 **Check:**
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && find . -name ".env*" ! -name ".env.example" -exec stat -c "%a %U:%G %F %N" {} \; | sort -k4'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'cd /root/roitsystems-infra && find . -name ".env*" ! -name ".env.example" -exec stat -c "%a %U:%G %F %N" {} \; | sort -k4'
 ```
 
 **Expect:** five `.env` files and five `.env.bak…` entries.
@@ -66,7 +66,7 @@ record the rollback restores (modes, owners, the link's target).
 **Change:**
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'set -e; cd /root/roitsystems-infra; L=infrastructure/.env.bak.pre-natsauth-20260915-211550; [ -L "$L" ] && rm -- "$L"; install -d -m 700 /root/env-backups/roitsystems-infra; for f in $(find . -name ".env.bak*" -type f); do d=/root/env-backups/roitsystems-infra/$(dirname "$f"); install -d -m 700 "$d"; mv -n -- "$f" "$d/"; done; find . -name ".env" -type f -exec chown root:root {} \; -exec chmod 600 {} \;; chmod -R go-rwx /root/env-backups; find . -name ".env*" ! -name ".env.example" -exec stat -c "%a %U:%G %F %n" {} \;; find /root/env-backups -type f'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'set -e; cd /root/roitsystems-infra; L=infrastructure/.env.bak.pre-natsauth-20260915-211550; [ -L "$L" ] && rm -- "$L"; install -d -m 700 /root/env-backups/roitsystems-infra; for f in $(find . -name ".env.bak*" -type f); do d=/root/env-backups/roitsystems-infra/$(dirname "$f"); install -d -m 700 "$d"; mv -n -- "$f" "$d/"; done; find . -name ".env" -type f -exec chown root:root {} \; -exec chmod 600 {} \;; chmod -R go-rwx /root/env-backups; find . -name ".env*" ! -name ".env.example" -exec stat -c "%a %U:%G %F %n" {} \;; find /root/env-backups -type f'
 ```
 
 **Expect:** five `.env` files, each `600 root:root regular file`, no `.env.bak`
@@ -76,7 +76,7 @@ left in the checkout, and four files under `/root/env-backups/roitsystems-infra/
 back to the mode and owner the check printed (for example `chmod 644 <file>`).
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/env-backups/roitsystems-infra && find . -type f | while read -r f; do mv -n -- "$f" "/root/roitsystems-infra/$f"; done; cd /root/roitsystems-infra && ln -s /root/roitsystems-infra/.env infrastructure/.env.bak.pre-natsauth-20260915-211550; find . -name ".env*" ! -name ".env.example" -exec stat -c "%a %U:%G %F %N" {} \;'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'cd /root/env-backups/roitsystems-infra && find . -type f | while read -r f; do mv -n -- "$f" "/root/roitsystems-infra/$f"; done; cd /root/roitsystems-infra && ln -s /root/roitsystems-infra/.env infrastructure/.env.bak.pre-natsauth-20260915-211550; find . -name ".env*" ! -name ".env.example" -exec stat -c "%a %U:%G %F %N" {} \;'
 ```
 
 The line recreates the link with an absolute target. If the recorded `%N`
@@ -96,13 +96,13 @@ Step 6 recreates CouchDB on its data volume with a new patch version
 **Check:** free space, which must be more than the size of the volume.
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'du -sh /var/lib/docker/volumes/infrastructure_couchdb-data/_data; df -h / | tail -1'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'du -sh /var/lib/docker/volumes/infrastructure_couchdb-data/_data; df -h / | tail -1'
 ```
 
 **Change:**
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'install -d -m 700 /root/backups && docker run --rm -v infrastructure_couchdb-data:/data:ro -v /root/backups:/b alpine:3.24 tar czf /b/couchdb-data-$(date -u +%Y%m%dT%H%MZ).tgz -C /data . && ls -l /root/backups'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'install -d -m 700 /root/backups && docker run --rm -v infrastructure_couchdb-data:/data:ro -v /root/backups:/b alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf tar czf /b/couchdb-data-$(date -u +%Y%m%dT%H%MZ).tgz -C /data . && ls -l /root/backups'
 ```
 
 **Expect:** a new `couchdb-data-<time>.tgz` of a plausible size.
@@ -131,7 +131,7 @@ kept.
 **Check:**
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && git status --porcelain --untracked-files=no | wc -l && git fetch -q origin main && git merge-base --is-ancestor HEAD origin/main && echo "fast-forward OK" && git log --oneline HEAD..origin/main | wc -l'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'cd /root/roitsystems-infra && git status --porcelain --untracked-files=no | wc -l && git fetch -q origin main && git merge-base --is-ancestor HEAD origin/main && echo "fast-forward OK" && git log --oneline HEAD..origin/main | wc -l'
 ```
 
 **Expect:** `0`, then `fast-forward OK`, then the number of new commits.
@@ -139,7 +139,7 @@ ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && git sta
 **Change:**
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && git merge --ff-only origin/main && git log -1 --format="%h %ad %s" --date=short'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'cd /root/roitsystems-infra && git merge --ff-only origin/main && git log -1 --format="%h %ad %s" --date=short'
 ```
 
 **Expect:** the current `main` commit.
@@ -165,7 +165,7 @@ step follows step 3.
 **Check:**
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'systemd-analyze cat-config systemd/journald.conf | grep -E "^(MaxRetentionSec|SystemMaxUse)="; journalctl --disk-usage'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'systemd-analyze cat-config systemd/journald.conf | grep -E "^(MaxRetentionSec|SystemMaxUse)="; journalctl --disk-usage'
 ```
 
 If this shows `MaxRetentionSec=29day` and `SystemMaxUse=1G`, **skip the
@@ -175,7 +175,7 @@ change**.
 it cannot run during a deploy; `flock -n` stops at once if one is running):
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && flock -n /var/lock/anchor-weather-deploy.lock flock -n /var/lock/roitsystems-infra-deploy.lock sh -c "install -D -m 0644 infrastructure/journald/30-retention.conf /etc/systemd/journald.conf.d/30-retention.conf && systemctl restart systemd-journald && journalctl --vacuum-size=1G" && systemd-analyze cat-config systemd/journald.conf | grep -E "^(MaxRetentionSec|SystemMaxUse)=" && journalctl --disk-usage && journalctl -n 3 --no-pager'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'cd /root/roitsystems-infra && flock -n /var/lock/anchor-weather-deploy.lock flock -n /var/lock/roitsystems-infra-deploy.lock sh -c "install -D -m 0644 infrastructure/journald/30-retention.conf /etc/systemd/journald.conf.d/30-retention.conf && systemctl restart systemd-journald && journalctl --vacuum-size=1G" && systemd-analyze cat-config systemd/journald.conf | grep -E "^(MaxRetentionSec|SystemMaxUse)=" && journalctl --disk-usage && journalctl -n 3 --no-pager'
 ```
 
 **Expect:** `MaxRetentionSec=29day`, `SystemMaxUse=1G`, disk usage 1 GB or
@@ -188,7 +188,7 @@ deletes are gone. Export any logs needed for an open incident first.
 ## Step 5: dry run (read-only)
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && ./deploy.sh --dry-run'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'cd /root/roitsystems-infra && ./deploy.sh --dry-run'
 ```
 
 **Expect:** for each target (`infrastructure`, `contact-inbox`,
@@ -212,10 +212,10 @@ The order and checks follow DEPLOY.md, "Rolling out the compose change".
 **Lines** (one target at a time; check after each):
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && ./deploy.sh image-converter'
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && ./deploy.sh contact-inbox'
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && ./deploy.sh --allow-caddy-restart infrastructure'
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra/corporate-network/anchor-weather-notifications && docker compose up -d --build && docker ps --filter name=anchor-weather-notifications --format "{{.Names}} {{.Status}}"'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'cd /root/roitsystems-infra && ./deploy.sh image-converter'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'cd /root/roitsystems-infra && ./deploy.sh contact-inbox'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'cd /root/roitsystems-infra && ./deploy.sh --allow-caddy-restart infrastructure'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'cd /root/roitsystems-infra/corporate-network/anchor-weather-notifications && docker compose up -d --build && docker ps --filter name=anchor-weather-notifications --format "{{.Names}} {{.Status}}"'
 ```
 
 **Expect:** after each target, `deploy.sh` reports the anchor-weather container
@@ -223,7 +223,7 @@ set unchanged, plus its own health checks. After `infrastructure`, the
 in-container config files match the checkout:
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra/infrastructure; sha256sum caddy/Caddyfile nats/nats.conf; docker exec infrastructure-caddy-1 sha256sum /etc/caddy/Caddyfile; docker cp infrastructure-nats-1:/etc/nats/nats.conf - | tar -xOf - | sha256sum; docker exec infrastructure-caddy-1 caddy version'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'cd /root/roitsystems-infra/infrastructure; sha256sum caddy/Caddyfile nats/nats.conf; docker exec infrastructure-caddy-1 sha256sum /etc/caddy/Caddyfile; docker cp infrastructure-nats-1:/etc/nats/nats.conf - | tar -xOf - | sha256sum; docker exec infrastructure-caddy-1 caddy version'
 ```
 
 The Caddyfile hashes must match each other, and so must the two `nats.conf`
@@ -245,7 +245,7 @@ the files `main` added, so a rebuild would mix old and new code.
 | `anchor-weather-notifications` | `corporate-network/anchor-weather-notifications` |
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && git reset --keep 4c08bcb && cd <folder from the table> && docker compose up -d --build && docker compose ps'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'cd /root/roitsystems-infra && git reset --keep 4c08bcb && cd <folder from the table> && docker compose up -d --build && docker compose ps'
 ```
 
 Targets already deployed and checked keep running: resetting the checkout does
