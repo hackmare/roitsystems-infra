@@ -79,6 +79,8 @@ back to the mode and owner the check printed (for example `chmod 644 <file>`).
 ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/env-backups/roitsystems-infra && find . -type f | while read -r f; do mv -n -- "$f" "/root/roitsystems-infra/$f"; done; cd /root/roitsystems-infra && ln -s /root/roitsystems-infra/.env infrastructure/.env.bak.pre-natsauth-20260915-211550; find . -name ".env*" ! -name ".env.example" -exec stat -c "%a %U:%G %F %N" {} \;'
 ```
 
+The line recreates the link with an absolute target. If the recorded `%N`
+output shows a different (for example relative) target, use that one instead.
 Nothing uses the link. Root runs every service, so 600 changes nothing for the
 containers.
 
@@ -221,7 +223,7 @@ set unchanged, plus its own health checks. After `infrastructure`, the
 in-container config files match the checkout:
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra/infrastructure; sha256sum caddy/Caddyfile nats/nats.conf; docker exec infrastructure-caddy-1 sha256sum /etc/caddy/Caddyfile; docker cp infrastructure-nats-1:/etc/nats/nats.conf - | tar -xO | sha256sum; docker exec infrastructure-caddy-1 caddy version'
+ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra/infrastructure; sha256sum caddy/Caddyfile nats/nats.conf; docker exec infrastructure-caddy-1 sha256sum /etc/caddy/Caddyfile; docker cp infrastructure-nats-1:/etc/nats/nats.conf - | tar -xOf - | sha256sum; docker exec infrastructure-caddy-1 caddy version'
 ```
 
 The Caddyfile hashes must match each other, and so must the two `nats.conf`
@@ -312,7 +314,7 @@ recreate the three services on the **same image ids** and the **same compose
 files**:
 
 ```sh
-ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'set -e; cd /root/anchor-weather; install -d -m 700 /root/env-backups/anchor-weather; cp -p .env /root/env-backups/anchor-weather/.env.pre-frontend-url-$(date -u +%Y%m%dT%H%M%SZ); sed -i "s#^FRONTEND_URL=.*#FRONTEND_URL=https://vectorweather.ca#" .env; O=$(mktemp /tmp/vw-pin-XXXXXX.yml); echo "services:" > $O; F=""; for s in backend worker scheduler; do c=$(docker ps --filter label=com.docker.compose.service=$s --filter label=com.docker.compose.project=anchor-weather -q); printf "  %s:\n    image: %s\n" $s $(docker inspect -f "{{.Image}}" $c) >> $O; F=$(docker inspect -f "{{index .Config.Labels \"com.docker.compose.project.config_files\"}}" $c); done; docker compose -p anchor-weather --project-directory /root/anchor-weather --env-file /root/anchor-weather/.env $(echo "$F" | sed "s/^/-f /; s/,/ -f /g") -f $O up -d --no-deps --no-build backend worker scheduler; rm -f $O; docker compose -p anchor-weather ps backend worker scheduler; for c in backend worker scheduler; do docker exec anchor-weather-$c printenv FRONTEND_URL; done; docker inspect -f "{{.Name}} {{.Image}}" anchor-weather-backend anchor-weather-worker anchor-weather-scheduler'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'set -e; cd /root/anchor-weather; install -d -m 700 /root/env-backups/anchor-weather; cp -p .env /root/env-backups/anchor-weather/.env.pre-frontend-url-$(date -u +%Y%m%dT%H%M%SZ); sed -i "s#^FRONTEND_URL=.*#FRONTEND_URL=https://vectorweather.ca#" .env; O=$(mktemp /tmp/vw-pin-XXXXXX.yml); trap "rm -f $O" EXIT; echo "services:" > $O; F=""; for s in backend worker scheduler; do c=$(docker ps --filter label=com.docker.compose.service=$s --filter label=com.docker.compose.project=anchor-weather -q); printf "  %s:\n    image: %s\n" $s $(docker inspect -f "{{.Image}}" $c) >> $O; F=$(docker inspect -f "{{index .Config.Labels \"com.docker.compose.project.config_files\"}}" $c); done; docker compose -p anchor-weather --project-directory /root/anchor-weather --env-file /root/anchor-weather/.env $(echo "$F" | sed "s/^/-f /; s/,/ -f /g") -f $O up -d --no-deps --no-build backend worker scheduler; docker compose -p anchor-weather ps backend worker scheduler; for c in backend worker scheduler; do docker exec anchor-weather-$c printenv FRONTEND_URL; done; docker inspect -f "{{.Name}} {{.Image}}" anchor-weather-backend anchor-weather-worker anchor-weather-scheduler'
 ```
 
 **Expect:** the three services `Up` (the backend then `healthy`),
@@ -321,7 +323,13 @@ check**. Vector Weather's API pauses for a few seconds while the backend
 restarts. Then request a sign-in email and confirm its link starts with
 `https://vectorweather.ca`. The next release carries the new value on its own.
 
-**Rollback:** copy `/root/env-backups/anchor-weather/.env.pre-frontend-url-<time>`
-back over `/root/anchor-weather/.env`, then run the change line **without** the
-`cp` and `sed` parts. Sign-in links sent before the change keep working,
+**Rollback:** put the backup back (the newest one, unless told otherwise) and
+recreate the three services on the same image ids and compose files:
+
+```sh
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'set -e; cd /root/anchor-weather; B=$(ls -1t /root/env-backups/anchor-weather/.env.pre-frontend-url-* | head -1); echo "restoring $B"; cp -p "$B" .env; O=$(mktemp /tmp/vw-pin-XXXXXX.yml); trap "rm -f $O" EXIT; echo "services:" > $O; F=""; for s in backend worker scheduler; do c=$(docker ps --filter label=com.docker.compose.service=$s --filter label=com.docker.compose.project=anchor-weather -q); printf "  %s:\n    image: %s\n" $s $(docker inspect -f "{{.Image}}" $c) >> $O; F=$(docker inspect -f "{{index .Config.Labels \"com.docker.compose.project.config_files\"}}" $c); done; docker compose -p anchor-weather --project-directory /root/anchor-weather --env-file /root/anchor-weather/.env $(echo "$F" | sed "s/^/-f /; s/,/ -f /g") -f $O up -d --no-deps --no-build backend worker scheduler; docker compose -p anchor-weather ps backend worker scheduler; for c in backend worker scheduler; do docker exec anchor-weather-$c printenv FRONTEND_URL; done'
+```
+
+**Expect:** `restoring …`, the three services `Up`, and
+`https://anchor-weather.selkietech.ca` three times. Sign-in links sent before the change keep working,
 because the old host redirects to `vectorweather.ca` with the path kept.
