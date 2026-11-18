@@ -55,12 +55,13 @@ guarded so that nothing happens if it is not a link. The live file stays.
 **Check:**
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && find . -name ".env*" ! -name ".env.example" -exec stat -c "%a %U:%G %F %n" {} \; | sort -k4'
+ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && find . -name ".env*" ! -name ".env.example" -exec stat -c "%a %U:%G %F %N" {} \; | sort -k4'
 ```
 
 **Expect:** five `.env` files and five `.env.bak…` entries.
 `infrastructure/.env.bak.pre-natsauth-20260915-211550` is listed as a
-`symbolic link`.
+`symbolic link` pointing to the root `.env`. **Keep this output**: it is the
+record the rollback restores (modes, owners, the link's target).
 
 **Change:**
 
@@ -71,9 +72,15 @@ ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'set -e; cd /root/roitsystems-infra; L
 **Expect:** five `.env` files, each `600 root:root regular file`, no `.env.bak`
 left in the checkout, and four files under `/root/env-backups/roitsystems-infra/`.
 
-**Rollback:** move the files back with `mv /root/env-backups/roitsystems-infra/<path> /root/roitsystems-infra/<path>`.
-The link is not needed by anything. Root runs every service, so 600 changes
-nothing for the containers.
+**Rollback:** move the backups back, recreate the link, then set each file
+back to the mode and owner the check printed (for example `chmod 644 <file>`).
+
+```sh
+ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/env-backups/roitsystems-infra && find . -type f | while read -r f; do mv -n -- "$f" "/root/roitsystems-infra/$f"; done; cd /root/roitsystems-infra && ln -s /root/roitsystems-infra/.env infrastructure/.env.bak.pre-natsauth-20260915-211550; find . -name ".env*" ! -name ".env.example" -exec stat -c "%a %U:%G %F %N" {} \;'
+```
+
+Nothing uses the link. Root runs every service, so 600 changes nothing for the
+containers.
 
 The root `.env` sets some names twice. With duplicates, the last value wins.
 Leave the file as it is in this step. De-duplicating it is a separate change
@@ -97,6 +104,11 @@ ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'install -d -m 700 /root/backups && do
 ```
 
 **Expect:** a new `couchdb-data-<time>.tgz` of a plausible size.
+
+This copies the volume while CouchDB is running. CouchDB writes its files
+append-only, so a live copy is normally usable, but it is not a guaranteed
+point-in-time snapshot. For a strict copy, stop CouchDB around the `tar`
+(the contact forms pause while it is stopped).
 
 **Rollback:** none needed. This only writes a backup.
 
@@ -144,9 +156,9 @@ Caddyfile and still report success.
 
 Every service on `main` logs to the host journal. DEPLOY.md, "Log retention",
 installs the retention settings once, before the first deploy that switches the
-logging driver. Use the commands in that section exactly. In summary: install
-`infrastructure/journald/30-retention.conf`, restart `systemd-journald`, and
-vacuum to 1 GB. The file comes from `main`, so this step follows step 3.
+logging driver. DEPLOY.md records this as done once on 2026-11-12, so the check
+will probably show it is already in place. The file comes from `main`, so this
+step follows step 3.
 
 **Check:**
 
@@ -154,10 +166,22 @@ vacuum to 1 GB. The file comes from `main`, so this step follows step 3.
 ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'systemd-analyze cat-config systemd/journald.conf | grep -E "^(MaxRetentionSec|SystemMaxUse)="; journalctl --disk-usage'
 ```
 
-If this already shows `29day` and `1G`, skip the step.
+If this shows `MaxRetentionSec=29day` and `SystemMaxUse=1G`, **skip the
+change**.
 
-**Rollback:** remove `/etc/systemd/journald.conf.d/30-retention.conf` and restart
-`systemd-journald`.
+**Change** (the commands from DEPLOY.md as one line, under both deploy locks so
+it cannot run during a deploy; `flock -n` stops at once if one is running):
+
+```sh
+ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && flock -n /var/lock/anchor-weather-deploy.lock flock -n /var/lock/roitsystems-infra-deploy.lock sh -c "install -D -m 0644 infrastructure/journald/30-retention.conf /etc/systemd/journald.conf.d/30-retention.conf && systemctl restart systemd-journald && journalctl --vacuum-size=1G" && systemd-analyze cat-config systemd/journald.conf | grep -E "^(MaxRetentionSec|SystemMaxUse)=" && journalctl --disk-usage && journalctl -n 3 --no-pager'
+```
+
+**Expect:** `MaxRetentionSec=29day`, `SystemMaxUse=1G`, disk usage 1 GB or
+less, and three recent journal lines.
+
+**Rollback:** remove `/etc/systemd/journald.conf.d/30-retention.conf` and
+restart `systemd-journald`. **The vacuum cannot be undone**: journal files it
+deletes are gone. Export any logs needed for an open incident first.
 
 ## Step 5: dry run (read-only)
 
@@ -197,24 +221,37 @@ set unchanged, plus its own health checks. After `infrastructure`, the
 in-container config files match the checkout:
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra/infrastructure && sha256sum caddy/Caddyfile nats/nats.conf && docker exec infrastructure-caddy-1 sha256sum /etc/caddy/Caddyfile && docker exec infrastructure-nats-1 sha256sum /etc/nats/nats.conf && docker exec infrastructure-caddy-1 caddy version'
+ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra/infrastructure; sha256sum caddy/Caddyfile nats/nats.conf; docker exec infrastructure-caddy-1 sha256sum /etc/caddy/Caddyfile; docker cp infrastructure-nats-1:/etc/nats/nats.conf - | tar -xO | sha256sum; docker exec infrastructure-caddy-1 caddy version'
 ```
 
-The two pairs of hashes must match, and Caddy must report `v2.11.9`. Do not
-rely on exit codes for this.
+The Caddyfile hashes must match each other, and so must the two `nats.conf`
+hashes. Caddy must report `v2.11.9`. The NATS image on `main` has no shell
+tools, so its file is read with `docker cp` rather than `docker exec`. The
+commands are joined with `;`, not `&&`, so one failure still prints the rest.
+Read the hashes; do not rely on exit codes.
 
-**Rollback (per target):** put that target's folder back to the old commit and
-recreate it.
+**Rollback (per target):** return the whole checkout to the old commit
+(as in step 3), then recreate **only** the target that failed, from its folder.
+Use `reset --keep`, not `git checkout <commit> -- <folder>`: the latter leaves
+the files `main` added, so a rebuild would mix old and new code.
+
+| Target | Folder |
+|---|---|
+| `image-converter` | `corporate-network/image-converter` |
+| `contact-inbox` | `corporate-network/contact-inbox` |
+| `infrastructure` | `infrastructure` |
+| `anchor-weather-notifications` | `corporate-network/anchor-weather-notifications` |
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && git checkout 4c08bcb -- <target folder> && cd <target folder> && docker compose up -d --build'
+ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/roitsystems-infra && git reset --keep 4c08bcb && cd <folder from the table> && docker compose up -d --build && docker compose ps'
 ```
 
-For `infrastructure`, the old images (`caddy:2`, `nats:2`, `couchdb:3`) are
-still in the local image cache until pruned, so do not prune images until all
-four targets are checked. CouchDB can also be restored from the step 2 backup.
-Afterwards, `git checkout main -- <target folder>` returns the checkout to
-`main`.
+Targets already deployed and checked keep running: resetting the checkout does
+not touch running containers. For `infrastructure`, the old images (`caddy:2`,
+`nats:2`, `couchdb:3`) are still in the local image cache until pruned, so do
+not prune images until all four targets are checked. CouchDB can also be
+restored from the step 2 backup. To go forward again, repeat step 3
+(`git merge --ff-only origin/main`).
 
 ## Step 7: public checks (anyone can run these)
 
@@ -245,29 +282,46 @@ links take one redirect hop. The anchor-weather DEPLOY.md already documents
 `FRONTEND_URL=https://vectorweather.ca`.
 
 Three services read it: `backend`, `worker` and `scheduler`. An `.env` change
-never reaches a running container; they must be recreated. The images do not
-change (`--no-build`).
+never reaches a running container, so they must be recreated.
 
-**Check:**
+**Do not use a plain `docker compose up` from the checkout.** Vector Weather
+releases are image-only. The release tooling imports images by id and recreates
+services from the compose files named in the running containers' labels, which
+may not match the checkout's `docker-compose.prod.yml`. The procedure below,
+from the Vector Weather owner, keeps the **running image ids and compose files**
+and changes only the environment.
+
+**Before you start:** check in GitHub Actions that no `vw-release` run is
+between *prepare* and *activate*. Activation refuses if `.env` changed since
+prepare.
+
+**Check** (read-only):
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'cd /root/anchor-weather && grep -c "^FRONTEND_URL=" .env && grep "^FRONTEND_URL=" .env && for c in backend worker scheduler; do docker exec anchor-weather-$c printenv FRONTEND_URL; done'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'for s in backend worker scheduler; do c=$(docker ps --filter label=com.docker.compose.service=$s --filter label=com.docker.compose.project=anchor-weather -q); docker inspect -f "{{.Name}} {{.Image}} {{index .Config.Labels \"com.docker.compose.project.config_files\"}} {{index .Config.Labels \"com.docker.compose.project.working_dir\"}}" $c; done; grep -c "^FRONTEND_URL=" /root/anchor-weather/.env; grep "^FRONTEND_URL=" /root/anchor-weather/.env'
 ```
 
-**Expect:** `1`, then `FRONTEND_URL=https://anchor-weather.selkietech.ca`, then
-the same value from each of the three containers.
+**Expect:** exactly one container per service; all three list the same
+`config_files`, which exist on disk; `working_dir` is `/root/anchor-weather`;
+then `1` and `FRONTEND_URL=https://anchor-weather.selkietech.ca`. **Keep the
+three image ids.** If a config file is missing or a service has more than one
+container, stop and send the output to the Vector Weather owner.
 
-**Change:**
+**Change:** back up `.env` outside the checkout, change the one line, then
+recreate the three services on the **same image ids** and the **same compose
+files**:
 
 ```sh
-ssh -i ~/.ssh/roitsystems root@"$DROPLET" 'set -e; cd /root/anchor-weather; cp -p .env .env.bak.pre-frontend-url-$(date -u +%Y%m%dT%H%MZ); sed -i "s#^FRONTEND_URL=.*#FRONTEND_URL=https://vectorweather.ca#" .env; docker compose -f docker-compose.prod.yml up -d --no-deps --no-build backend worker scheduler; sleep 20; for c in backend worker scheduler; do docker exec anchor-weather-$c printenv FRONTEND_URL; done; docker ps --filter name=anchor-weather-backend --format "{{.Names}} {{.Status}}"'
+ssh -i ~/.ssh/roitsystems -o IdentitiesOnly=yes root@"$DROPLET" 'set -e; cd /root/anchor-weather; install -d -m 700 /root/env-backups/anchor-weather; cp -p .env /root/env-backups/anchor-weather/.env.pre-frontend-url-$(date -u +%Y%m%dT%H%M%SZ); sed -i "s#^FRONTEND_URL=.*#FRONTEND_URL=https://vectorweather.ca#" .env; O=$(mktemp /tmp/vw-pin-XXXXXX.yml); echo "services:" > $O; F=""; for s in backend worker scheduler; do c=$(docker ps --filter label=com.docker.compose.service=$s --filter label=com.docker.compose.project=anchor-weather -q); printf "  %s:\n    image: %s\n" $s $(docker inspect -f "{{.Image}}" $c) >> $O; F=$(docker inspect -f "{{index .Config.Labels \"com.docker.compose.project.config_files\"}}" $c); done; docker compose -p anchor-weather --project-directory /root/anchor-weather --env-file /root/anchor-weather/.env $(echo "$F" | sed "s/^/-f /; s/,/ -f /g") -f $O up -d --no-deps --no-build backend worker scheduler; rm -f $O; docker compose -p anchor-weather ps backend worker scheduler; for c in backend worker scheduler; do docker exec anchor-weather-$c printenv FRONTEND_URL; done; docker inspect -f "{{.Name}} {{.Image}}" anchor-weather-backend anchor-weather-worker anchor-weather-scheduler'
 ```
 
-**Expect:** `https://vectorweather.ca` three times, and the backend `Up` (then
-`healthy`). Vector Weather's API pauses for a few seconds while the backend
-restarts.
+**Expect:** the three services `Up` (the backend then `healthy`),
+`https://vectorweather.ca` three times, and the **same three image ids as the
+check**. Vector Weather's API pauses for a few seconds while the backend
+restarts. Then request a sign-in email and confirm its link starts with
+`https://vectorweather.ca`. The next release carries the new value on its own.
 
-**Rollback:** copy the `.env.bak.pre-frontend-url-<time>` file back over `.env`
-and run the same `docker compose … up -d --no-deps --no-build backend worker scheduler`.
-Sign-in links sent before the change keep working, because the old host
-redirects to `vectorweather.ca` with the path kept.
+**Rollback:** copy `/root/env-backups/anchor-weather/.env.pre-frontend-url-<time>`
+back over `/root/anchor-weather/.env`, then run the change line **without** the
+`cp` and `sed` parts. Sign-in links sent before the change keep working,
+because the old host redirects to `vectorweather.ca` with the path kept.
