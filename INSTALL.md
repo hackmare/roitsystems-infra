@@ -255,6 +255,10 @@ Google, using an account listed in `ADMIN_EMAILS`.
 
 ## Backup & Restore
 
+On production, a daily backup runs from cron: see
+[docs/operations.md](docs/operations.md), "Daily CouchDB backup". The steps
+below are for a strict (stopped) copy by hand.
+
 CouchDB's data is in the `infrastructure` project's `couchdb-data` volume.
 Find its full name with:
 
