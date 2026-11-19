@@ -255,6 +255,10 @@ Google, using an account listed in `ADMIN_EMAILS`.
 
 ## Backup & Restore
 
+On production, a daily backup runs from cron: see
+[docs/operations.md](docs/operations.md), "Daily CouchDB backup". The steps
+below are for a strict (stopped) copy by hand.
+
 CouchDB's data is in the `infrastructure` project's `couchdb-data` volume.
 Find its full name with:
 
@@ -286,12 +290,15 @@ docker run --rm \
 
 ### Restore
 
+This **replaces** everything in the volume (it is emptied first, so no
+newer file survives next to the restored ones). Take a fresh backup first.
+
 ```bash
 (cd infrastructure && docker compose stop couchdb)
 docker run --rm \
   -v <couchdb volume>:/data \
   -v /path/to/backup:/backup \
-  ubuntu:24.04 tar xzf /backup/couchdb-backup.tar.gz -C /data
+  ubuntu:24.04 sh -c 'find /data -mindepth 1 -delete && tar xzf /backup/couchdb-backup.tar.gz -C /data'
 (cd infrastructure && docker compose start couchdb)
 ```
 

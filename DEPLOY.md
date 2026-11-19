@@ -51,16 +51,23 @@ deploys all three. The script:
 3. **Converges** each target with `docker compose up -d` — only containers
    whose image or config changed are recreated; nothing is `down`ed, no
    volume is ever removed, and nothing is pruned.
-4. Applies Caddyfile changes with a zero-downtime `caddy reload`. It will
-   **not** recreate the Caddy container itself unless you pass
-   `--allow-caddy-restart`, because Caddy also fronts the anchor-weather
-   production domains that share this host (see below).
+4. Applies Caddyfile changes with a zero-downtime `caddy reload`, and
+   `nats.conf` changes with a reload signal to NATS (no client is dropped).
+   Both work because Compose mounts the `caddy/` and `nats/` folders, not
+   single files: git replaces a changed file with a new one, which a
+   single-file mount never sees. It will **not** recreate the Caddy container
+   itself unless you pass `--allow-caddy-restart`, because Caddy also fronts
+   the anchor-weather production domains that share this host (see below).
 5. Verifies: the anchor-weather containers are byte-for-byte the same set
    before and after, NATS answers on `127.0.0.1:4222`, and the public
    health endpoint responds.
 
 Use `--dry-run` first to see exactly which containers a deploy would
-recreate, without changing anything.
+recreate, without changing anything. The dry run reads each target's compose file as it
+is on `origin/main` (the commit a deploy would move to) and leaves the
+checkout where it is. Only the compose file comes from `main`: a changed
+Caddyfile, `nats.conf` or Dockerfile doesn't appear in the plan, because
+Compose doesn't compare those when deciding what to recreate.
 
 **⚠️ Shared host**: this stack shares the production droplet with
 anchor-weather, and `infrastructure/`'s Caddy terminates TLS for

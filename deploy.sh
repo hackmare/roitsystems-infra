@@ -17,7 +17,9 @@
 #      their container IDs are snapshotted before and after and compared.
 #   3. Caddy is never restarted without --allow-caddy-restart, because
 #      restarting it drops anchor-weather's public edge. Caddyfile changes
-#      are applied with a zero-downtime `caddy reload` instead. Other
+#      are applied with a zero-downtime `caddy reload` instead, and
+#      nats.conf changes with a reload signal to NATS. Both work because
+#      the compose file mounts their folders, not single files (#159). Other
 #      infrastructure services are converged with --no-deps so a NATS or
 #      CouchDB recreate can't cascade into a Caddy recreate.
 #   4. `docker compose` v2 only. docker-compose v1 (1.29.2) is broken on
@@ -30,7 +32,8 @@
 #   Targets: infrastructure | contact-inbox | image-converter
 #   No target = all three, in that order.
 #
-#   --dry-run              Show what would be pulled/recreated; change nothing.
+#   --dry-run              Show what a deploy of origin/main would recreate,
+#                          from main's compose files; change nothing.
 #   --allow-caddy-restart  Permit a Caddy container recreate (brief outage
 #                          for ALL domains on this host, anchor-weather
 #                          included). Only needed when caddy's compose
@@ -98,7 +101,12 @@ require_env() {
 
 compose_in() {  # compose_in <dir> <args...>
   local dir="$1"; shift
-  docker compose --project-directory "$REPO_ROOT/$dir" -f "$REPO_ROOT/$dir/docker-compose.yml" "$@"
+  local file="$REPO_ROOT/$dir/docker-compose.yml"
+  # A dry run plans from the commit a deploy would move to, not the checkout (#160).
+  if [ "$DRY_RUN" -eq 1 ]; then
+    file=$(plan_compose_file "$dir") || exit 1
+  fi
+  docker compose --project-directory "$REPO_ROOT/$dir" -f "$file" "$@"
 }
 
 # Converge one project. $3 (optional) = extra `up` args, e.g. --build.
@@ -108,6 +116,33 @@ converge() {  # converge <dir> <services...>
     compose_in "$dir" up -d --dry-run --no-deps "$@" 2>&1 | sed "s|^|  [dry-run:$dir] |"
   else
     compose_in "$dir" up -d --no-deps "$@"
+  fi
+}
+
+# NATS reads nats.conf only at start, so a changed nats.conf needs a signal:
+# SIGHUP makes nats-server re-read it without dropping clients. A change it
+# can't apply live is refused and logged, and the running config stays. Safe
+# to send when nothing changed.
+reload_nats() {
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log "[dry-run] Would send NATS a reload signal (nats.conf pickup)"
+    return
+  fi
+  local since out
+  since=$(( $(date +%s) - 1 ))
+  # A failed signal (NATS restarting, or not up yet) must not abort the deploy
+  # under set -e: warn and carry on to the Caddy step and the checks.
+  if ! compose_in infrastructure kill -s HUP nats >/dev/null 2>&1; then
+    warn "Could not signal NATS to reload; if nats.conf changed, re-run the deploy or recreate NATS."
+    return 0
+  fi
+  sleep 2
+  out=$(compose_in infrastructure logs --since "$since" nats 2>&1 || true)
+  if grep -q "Reloaded server configuration" <<<"$out"; then
+    log "NATS config reloaded."
+  else
+    warn "NATS did not confirm a reload; the running config may be the old one. Check:"
+    warn "  docker compose -f infrastructure/docker-compose.yml logs --since $since nats"
   fi
 }
 
@@ -123,6 +158,7 @@ deploy_infrastructure() {
   others=$(compose_in infrastructure config --services | grep -v '^caddy$')
   # shellcheck disable=SC2086  # word-splitting the service list is intended
   converge infrastructure $others
+  reload_nats
 
   # Caddy: find out whether ITS OWN config/image changed (--no-deps
   # isolates it from the nats/couchdb recreates above).

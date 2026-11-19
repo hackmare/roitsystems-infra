@@ -1,86 +1,20 @@
 # Operations & Deployment
 
-## Recommended Droplet
+## Production layout
 
-| | Minimum | Preferred |
-|---|---|---|
-| vCPU | 1 | 1 |
-| RAM | 1 GB | 2 GB |
-| Disk | 25 GB SSD | 50 GB SSD |
-| OS | Ubuntu 24.04 LTS | Ubuntu 24.04 LTS |
-
-**Estimated cost**: $6–$12/month (DigitalOcean).
-
----
-
-## Initial Server Setup
+Production runs as **root** from the checkout at `/root/roitsystems-infra`, on a
+server it shares with the Vector Weather (anchor-weather) stack. There is no
+separate deploy user. Every command below runs as root in that folder unless it
+says otherwise:
 
 ```bash
-# 1. SSH in as root, create a deploy user
-adduser deploy
-usermod -aG sudo docker deploy
-# (copy your SSH key to /home/deploy/.ssh/authorized_keys)
-
-# 2. Update system
-apt update && apt upgrade -y
-
-# 3. Install Docker
-curl -fsSL https://get.docker.com | sh
-systemctl enable --now docker
-
-# 4. Install Docker Compose plugin (comes with Docker CE on Ubuntu 24.04)
-docker compose version   # verify
-
-# 5. Configure UFW firewall
-ufw allow OpenSSH
-ufw allow 80
-ufw allow 443
-ufw --force enable
-ufw status
+cd /root/roitsystems-infra
 ```
 
----
-
-## DNS Records
-
-Add these records to your DNS provider (Cloudflare, DigitalOcean DNS, etc.):
-
-| Type | Name | Value | TTL |
-|------|------|-------|-----|
-| A | `api` | `<droplet-ip>` | 300 |
-
-So `api.<your domain>` → your droplet IP.
-
-If you prefer a single domain: replace `api` with `infra`.
-
-**Do not proxy through Cloudflare** until you have confirmed TLS works end-to-end. Caddy's ACME challenge fails behind Cloudflare's orange-cloud proxy if you use HTTP-01.
-
----
-
-## Deployment
-
-```bash
-# On the server, as deploy user
-git clone https://github.com/hackmare/roitsystems-infra.git
-cd roitsystems-infra
-
-# Create secrets: one .env, copied (or linked) into each project folder
-install -m 600 .env.example .env   # secrets: readable by the owner only
-nano .env          # fill in real values; paste each secret from: openssl rand -hex 32
-for d in infrastructure corporate-network/contact-inbox corporate-network/image-converter; do
-  install -m 600 .env "$d/.env"
-done
-
-# Deploy (see DEPLOY.md)
-./deploy.sh --dry-run
-./deploy.sh
-
-# Watch a project's logs
-(cd corporate-network/contact-inbox && docker compose logs -f)
-```
-
-Never run `docker compose down -v` or `docker system prune --volumes`: they
-delete the CouchDB and NATS data.
+- Setting up a new server: [INSTALL.md](../INSTALL.md), "Production Deployment".
+- Deploying and updating: [DEPLOY.md](../DEPLOY.md). Always `./deploy.sh --dry-run`
+  first, then `./deploy.sh`. Never `docker compose down -v` or
+  `docker system prune --volumes`: they delete the CouchDB and NATS data.
 
 ### Verify
 
@@ -92,24 +26,6 @@ done
 
 # Public API health
 curl https://$API_DOMAIN/health
-
-# Test a contact submission
-curl -X POST https://$API_DOMAIN/api/contact \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Test","email":"test@example.com","subject":"Test","message":"Integration test from curl"}'
-# Expected: {"success":true}
-
-# Admin UI
-open https://$API_DOMAIN/corporate-network/contact/admin   # sign in with Google
-```
-
----
-
-## Updating
-
-```bash
-./deploy.sh --dry-run   # what would change
-./deploy.sh             # fast-forwards to origin/main, recreates only what changed
 ```
 
 ---
@@ -130,62 +46,82 @@ and `docker system prune --volumes` delete them, so never run either.
 
 ## Backup
 
-### CouchDB
+Backups go under `/root/backups` (folder mode 0700, files 0600). Every
+container in these commands uses the same pinned image:
 
 ```bash
-# One-off backup to a timestamped tar on the host
-docker run --rm \
-  --volumes-from $(cd infrastructure && docker compose ps -q couchdb) \
-  -v /backup:/backup \
-  alpine \
-  tar czf /backup/couchdb-$(date +%Y%m%d-%H%M%S).tar.gz /opt/couchdb/data
+ALPINE=alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 ```
 
-Alternatively, use CouchDB's built-in replication to push to a second CouchDB (e.g., CouchDB Cloud / Cloudant).
+### Daily CouchDB backup
+
+[`scripts/backup-couchdb.sh`](../scripts/backup-couchdb.sh) copies the
+`infrastructure_couchdb-data` volume, read-only and with CouchDB still running,
+to `/root/backups/couchdb/couchdb-data-<UTC time>.tgz`. It checks that the
+archive reads back and keeps 14 days of its own archives. It deletes nothing
+else. It refuses to run, and exits 1, unless the disk has more than twice
+the volume's size free.
+
+It runs from a root-owned copy in `/etc/cron.daily`, outside the checkout, so a
+merge to `main` can't change what runs as root every day. **Install it** (and
+re-install after the script changes) from a checkout that has it. This also
+runs it once, so you see a first backup straight away:
+
+```bash
+install -m 0700 -o root -g root scripts/backup-couchdb.sh /etc/cron.daily/roitsystems-backup \
+  && run-parts --test /etc/cron.daily | grep -x /etc/cron.daily/roitsystems-backup \
+  && /etc/cron.daily/roitsystems-backup && ls -l /root/backups/couchdb | tail -3
+```
+
+**Expect:** the cron path printed, then `roitsystems-backup: wrote …`, then
+the newest archive with `-rw-------`.
+
+**Check it later:** `ls -lt /root/backups/couchdb | head -3`. The newest file
+should be less than a day old.
+
+**Remove it:** `rm /etc/cron.daily/roitsystems-backup`. The archives stay.
+
+**Later step, not done yet:** these copies sit on the same server as the data.
+Next come an off-box copy (to object storage or another host), an alert when
+a run fails, and a monthly test restore of the newest archive into a throwaway
+volume, to prove the backups can be read back into CouchDB.
+
+### One-off CouchDB backup
+
+The same copy, by hand, for example before a CouchDB upgrade:
+
+```bash
+install -d -m 700 /root/backups
+docker run --rm -v infrastructure_couchdb-data:/data:ro -v /root/backups:/b "$ALPINE" \
+  tar czf /b/couchdb-data-$(date -u +%Y%m%dT%H%MZ).tgz -C /data .
+```
+
+A live copy is normally usable because CouchDB writes its files append-only,
+but it isn't a strict point-in-time copy. For a strict copy, stop CouchDB around
+the `tar` (`(cd infrastructure && docker compose stop couchdb)`, then `start`).
+While it is stopped, the contact forms can't save.
 
 ### NATS JetStream
 
 ```bash
-docker run --rm \
-  --volumes-from $(cd infrastructure && docker compose ps -q nats) \
-  -v /backup:/backup \
-  alpine \
-  tar czf /backup/nats-$(date +%Y%m%d-%H%M%S).tar.gz /data
-```
-
-### Automated Daily Backup (cron)
-
-```bash
-# /etc/cron.daily/roitsystems-backup
-#!/usr/bin/env bash
-set -e
-cd /home/deploy/roitsystems-infra
-docker run --rm \
-  --volumes-from $(cd infrastructure && docker compose ps -q couchdb) \
-  -v /backup/couchdb:/backup \
-  alpine \
-  tar czf /backup/couchdb-$(date +%Y%m%d).tar.gz /opt/couchdb/data
-
-# Retain 30 days
-find /backup/couchdb -name "*.tar.gz" -mtime +30 -delete
+docker run --rm -v infrastructure_nats-data:/data:ro -v /root/backups:/b "$ALPINE" \
+  tar czf /b/nats-data-$(date -u +%Y%m%dT%H%MZ).tgz -C /data .
 ```
 
 ---
 
 ## Restore
 
+Restoring **replaces** everything in the CouchDB volume with the archive. Only
+restore with Morgane's go.
+
+**Stop CouchDB and take a fresh one-off backup first** (above). The wipe below
+can't be undone.
+
 ```bash
-# Stop services
 (cd infrastructure && docker compose stop couchdb)
-
-# Restore from backup
-docker run --rm \
-  --volumes-from $(cd infrastructure && docker compose ps -q couchdb) \
-  -v /backup:/backup \
-  alpine \
-  sh -c "rm -rf /opt/couchdb/data/* && tar xzf /backup/<filename>.tar.gz -C /"
-
-# Restart
+docker run --rm -v infrastructure_couchdb-data:/data -v /root/backups/couchdb:/b "$ALPINE" \
+  sh -c 'find /data -mindepth 1 -delete && tar xzf /b/<archive>.tgz -C /data'
 (cd infrastructure && docker compose start couchdb)
 ```
 
@@ -225,7 +161,7 @@ Set up an external uptime monitor on `https://$API_DOMAIN/health` for always-on 
 (cd corporate-network/contact-inbox && docker compose logs --tail=100 contact-inbox-api)
 ```
 
-Logs are written to Docker's JSON log driver by default. For persistent log shipping, add a `logging:` section to the project's `docker-compose.yml` pointing to your log aggregator.
+Every container logs to the host's journal (the `journald` logging driver); `docker compose logs` still works. Retention is set once per server: see [DEPLOY.md](../DEPLOY.md), "Log retention".
 
 ---
 
