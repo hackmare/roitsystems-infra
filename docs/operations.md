@@ -59,7 +59,8 @@ ALPINE=alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0
 `infrastructure_couchdb-data` volume, read-only and with CouchDB still running,
 to `/root/backups/couchdb/couchdb-data-<UTC time>.tgz`. It checks that the
 archive reads back and keeps 14 days of its own archives. It deletes nothing
-else.
+else. It refuses to run, and exits 1, unless the disk has more than twice
+the volume's size free.
 
 It runs from a root-owned copy in `/etc/cron.daily`, outside the checkout, so a
 merge to `main` can't change what runs as root every day. **Install it** (and

@@ -25,6 +25,16 @@ docker volume inspect "$VOLUME" >/dev/null 2>&1 \
   || { echo "roitsystems-backup: volume $VOLUME not found" >&2; exit 1; }
 install -d -m 0700 "$DEST"
 
+# This disk is shared with Vector Weather and has filled up before: refuse
+# unless free space is more than twice the volume's size. (A .tgz is smaller
+# than the volume, so this leaves room for the new archive and to spare.)
+used_kb=$(docker run --rm --network none -v "$VOLUME":/data:ro "$ALPINE" du -sk /data | cut -f1)
+free_kb=$(df -Pk "$DEST" | awk 'NR==2 {print $4}')
+if ! [[ $used_kb =~ ^[0-9]+$ && $free_kb =~ ^[0-9]+$ ]] || (( free_kb <= 2 * used_kb )); then
+  echo "roitsystems-backup: not enough free space in $DEST (free ${free_kb:-?} KiB, need more than 2 x ${used_kb:-?} KiB); no backup written" >&2
+  exit 1
+fi
+
 name="couchdb-data-$(date -u +%Y%m%dT%H%M%SZ).tgz"
 # Write to a .part file first, so an interrupted run never leaves a file that
 # looks like a finished backup.
