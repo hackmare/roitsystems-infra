@@ -19,12 +19,15 @@ Private message-ingestion infrastructure for [roitsystems.ca](https://roitsystem
 ## Quick start (local)
 
 ```bash
-git clone https://github.com/morgane-oger/roitsystems-infra.git
+git clone https://github.com/hackmare/roitsystems-infra.git
 cd roitsystems-infra
-cp .env.example .env
-# Edit .env with your values (see below)
-
-docker compose up -d --build
+install -m 600 .env.example .env
+# Edit .env with your values (see below), then copy it into each project
+# and start them (there is no compose file at the top level):
+for d in infrastructure corporate-network/contact-inbox corporate-network/image-converter; do
+  install -m 600 .env "$d/.env"
+  (cd "$d" && docker compose up -d --build)
+done
 ```
 
 ## .env values
