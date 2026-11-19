@@ -81,8 +81,9 @@ should be less than a day old.
 **Remove it:** `rm /etc/cron.daily/roitsystems-backup`. The archives stay.
 
 **Later step, not done yet:** these copies sit on the same server as the data.
-An off-box copy (to object storage or another host) and an alert when a run
-fails come next.
+Next come an off-box copy (to object storage or another host), an alert when
+a run fails, and a monthly test restore of the newest archive into a throwaway
+volume, to prove the backups can be read back into CouchDB.
 
 ### One-off CouchDB backup
 
@@ -110,8 +111,11 @@ docker run --rm -v infrastructure_nats-data:/data:ro -v /root/backups:/b "$ALPIN
 
 ## Restore
 
-Restoring **replaces** everything in the CouchDB volume with the archive. Take
-a fresh one-off backup first, and only restore with Morgane's go.
+Restoring **replaces** everything in the CouchDB volume with the archive. Only
+restore with Morgane's go.
+
+**Stop CouchDB and take a fresh one-off backup first** (above). The wipe below
+can't be undone.
 
 ```bash
 (cd infrastructure && docker compose stop couchdb)
