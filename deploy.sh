@@ -124,7 +124,12 @@ reload_nats() {
   fi
   local since out
   since=$(( $(date +%s) - 1 ))
-  compose_in infrastructure kill -s HUP nats >/dev/null
+  # A failed signal (NATS restarting, or not up yet) must not abort the deploy
+  # under set -e: warn and carry on to the Caddy step and the checks.
+  if ! compose_in infrastructure kill -s HUP nats >/dev/null 2>&1; then
+    warn "Could not signal NATS to reload; if nats.conf changed, re-run the deploy or recreate NATS."
+    return 0
+  fi
   sleep 2
   out=$(compose_in infrastructure logs --since "$since" nats 2>&1 || true)
   if grep -q "Reloaded server configuration" <<<"$out"; then
