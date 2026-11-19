@@ -41,8 +41,8 @@ unreachable from the Internet, just no longer Docker-network-only. See
 
 ## Data Flow — Contact Form Submission
 
-1. Browser POSTs to `https://api.roitsystems.ca/api/contact`
-2. Caddy terminates TLS, forwards to `api:3000`
+1. Browser POSTs to `https://pubapi.roitsystems.ca/api/contact`
+2. Caddy terminates TLS, forwards to `contact-inbox-api:3000`
 3. API validates + rate-limits the request
 4. API writes document to CouchDB `contact_messages` (status: `received`)
 5. API publishes `contact.messages.new` event to NATS JetStream

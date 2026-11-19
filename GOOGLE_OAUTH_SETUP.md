@@ -6,7 +6,7 @@ This document describes the Google OAuth 2.0 authentication system for admin UIs
 
 All admin interfaces now use Google OAuth 2.0 for authentication instead of bearer tokens or HTTP Basic auth:
 
-- **Contact Inbox Admin**: `https://pubapi.roitsystems.ca/contact/admin`
+- **Contact Inbox Admin**: `https://pubapi.roitsystems.ca/corporate-network/contact/admin`
 - **Image Converter Admin**: `https://pubapi.roitsystems.ca/corporate-network/image-converter/convert`
 - **Corporate Network Dashboard**: `https://pubapi.roitsystems.ca/corporate-network/`
 
@@ -238,4 +238,4 @@ If migrating an existing deployment from bearer token auth:
 
 - [Google OAuth 2.0 Documentation](https://developers.google.com/identity/protocols/oauth2)
 - [google-auth-library-nodejs](https://github.com/googleapis/google-auth-library-nodejs)
-- [Fastify Cookie Plugin](https://github.com/fastify/cookie)
+- [Fastify Cookie Plugin](https://github.com/fastify/fastify-cookie)

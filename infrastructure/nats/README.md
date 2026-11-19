@@ -77,13 +77,14 @@ out and are worth writing down:
 
 ## Verifying
 
-Check the config parses before deploying — a syntax error here stops the bus:
+Check the config parses before deploying — a syntax error here stops the bus.
+Run it from `infrastructure/`, with the exact image `docker-compose.yml` pins:
 
 ```bash
 docker run --rm --network none \
   -v "$PWD/nats/nats.conf:/tmp/nats.conf:ro" \
   --env-file .env \
-  nats:2 -t -c /tmp/nats.conf
+  "$(grep -oE 'image: nats:[0-9][^ ]*' docker-compose.yml | cut -d' ' -f2)" -t -c /tmp/nats.conf
 ```
 
 The permission model was exercised end to end against a throwaway server with

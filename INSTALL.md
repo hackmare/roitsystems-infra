@@ -32,7 +32,7 @@ creates. On the server, `./deploy.sh` does all of this; see
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/morgane-oger/roitsystems-infra.git
+git clone https://github.com/hackmare/roitsystems-infra.git
 cd roitsystems-infra
 ```
 
@@ -42,10 +42,10 @@ Fill in one file from the template, then copy it (or link it) into each
 folder:
 
 ```bash
-cp .env.example .env
+install -m 600 .env.example .env   # secrets: readable by the owner only
 # edit .env (below), then:
 for d in infrastructure corporate-network/contact-inbox corporate-network/image-converter; do
-  cp .env "$d/.env"
+  install -m 600 .env "$d/.env"
 done
 ```
 
@@ -157,7 +157,7 @@ Don't install Ubuntu's `docker-compose` package: it's v1.
 
 ```bash
 cd /root
-git clone https://github.com/morgane-oger/roitsystems-infra.git
+git clone https://github.com/hackmare/roitsystems-infra.git
 cd roitsystems-infra
 ```
 
@@ -357,10 +357,12 @@ docker stats  # per container
 
 ### Disk space
 
-Docker's default log driver doesn't rotate container logs unless it's set up
-to (`max-size` and `max-file` in `/etc/docker/daemon.json`; see Docker's
-json-file logging docs). If the disk fills, look first (`docker system df`)
-and remove only what you've identified. Never prune volumes.
+Every container logs to the host's journal, which keeps at most 1 GB and
+nothing older than 30 days once `infrastructure/journald/30-retention.conf` is
+installed (see [DEPLOY.md, "Log retention"](DEPLOY.md#log-retention-1-gb-at-most-30-days)).
+Check it with `journalctl --disk-usage`. If the disk fills, look first
+(`docker system df`, `du -sh /var/lib/docker/*`) and remove only what you've
+identified. Never prune volumes.
 
 ### Health endpoints
 

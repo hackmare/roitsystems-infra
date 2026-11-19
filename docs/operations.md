@@ -61,14 +61,14 @@ If you prefer a single domain: replace `api` with `infra`.
 
 ```bash
 # On the server, as deploy user
-git clone https://github.com/morgane-oger/roitsystems-infra.git
+git clone https://github.com/hackmare/roitsystems-infra.git
 cd roitsystems-infra
 
 # Create secrets: one .env, copied (or linked) into each project folder
-cp .env.example .env
+install -m 600 .env.example .env   # secrets: readable by the owner only
 nano .env          # fill in real values; paste each secret from: openssl rand -hex 32
 for d in infrastructure corporate-network/contact-inbox corporate-network/image-converter; do
-  cp .env "$d/.env"
+  install -m 600 .env "$d/.env"
 done
 
 # Deploy (see DEPLOY.md)
