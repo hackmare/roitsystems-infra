@@ -119,9 +119,10 @@ point-in-time snapshot. For a strict copy, stop CouchDB around the `tar`
 **Do this as its own step, before running any `deploy.sh`.** The `deploy.sh`
 currently on the server is the 2026-10-06 version. Its `--dry-run` fetches
 `main` but compares against the old compose files, so its output says nothing
-about `main`. Its real run would `git pull`, which rewrites `deploy.sh` while
-bash is still reading it. With the checkout on `main` first, `deploy.sh`
-becomes `main`'s script, and its dry run shows the real plan.
+about `main`. Its real run would `git pull` and then keep going with its own
+October logic, applying `main`'s compose files with rules written before them.
+With the checkout on `main` first, the `deploy.sh` that runs is `main`'s
+script, and its dry run shows the real plan.
 
 No tracked file is modified on the server. The untracked files left after step 1
 (`.deploy-test.sh`, `FETCH_HEAD`, `package-lock.json`) do not exist on `main`, so
