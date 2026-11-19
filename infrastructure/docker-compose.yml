@@ -25,7 +25,10 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      # The folder, not the file: git replaces a changed file with a new one, and a single-file
+      # mount would keep showing the old one, so `caddy reload` in deploy.sh would reload stale
+      # config (#159).
+      - ./caddy:/etc/caddy:ro
       - caddy-data:/data
     environment:
       API_DOMAIN: ${API_DOMAIN}
@@ -59,7 +62,8 @@ services:
       NATS_PASS_IMAGE_API: ${NATS_PASS_IMAGE_API}
       NATS_PASS_IMAGE_MAGICK: ${NATS_PASS_IMAGE_MAGICK}
     volumes:
-      - ./nats/nats.conf:/etc/nats/nats.conf
+      # The folder, for the same reason as Caddy's; deploy.sh sends a reload signal (#159).
+      - ./nats:/etc/nats:ro
       - nats-data:/data
     networks:
       - corporate-backend

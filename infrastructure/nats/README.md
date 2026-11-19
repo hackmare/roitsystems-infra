@@ -98,6 +98,11 @@ client cannot publish to another service's subjects.
    `environment:` in `infrastructure/docker-compose.yml`.
 3. Give the client `NATS_URL=nats://<user>:<password>@nats:4222`.
 
+`deploy.sh` sends NATS a reload signal, so a `nats.conf` change goes live
+without a restart. A new `NATS_PASS_*` variable is different: it changes the
+container's environment, so the deploy recreates NATS (a brief reconnect for
+every client).
+
 Grant the narrowest subject set that works. If a JetStream client fails with
 `permissions violation for publish to $JS.API...`, the error names the missing
 endpoint — add that one rather than widening to `$JS.API.>`.
