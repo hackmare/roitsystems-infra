@@ -1,0 +1,31 @@
+# ShellCheck on every tracked shell script, which until now ran in no workflow. Errors only for now; its
+# warnings here are mostly false positives from the tests' `check '<command text>'` pattern (variables
+# used inside the quoted text), to be sorted in a later change. Seconds, no secrets, a read-only token: it
+# reads the scripts and runs none of them.
+name: Static checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: ShellCheck (errors)                 # ships with ubuntu-latest
+        run: |
+          shellcheck --version
+          git ls-files -z '*.sh' | xargs -0 shellcheck --severity=error

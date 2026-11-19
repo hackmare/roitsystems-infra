@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Sourced by deploy.sh: bring the checkout up to date, fast-forward only.
 #
 #   update_checkout <dry_run 0|1>
