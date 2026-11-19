@@ -60,7 +60,11 @@ deploys all three. The script:
    health endpoint responds.
 
 Use `--dry-run` first to see exactly which containers a deploy would
-recreate, without changing anything.
+recreate, without changing anything. The dry run reads each target's compose file as it
+is on `origin/main` (the commit a deploy would move to) and leaves the
+checkout where it is. Only the compose file comes from `main`: a changed
+Caddyfile, `nats.conf` or Dockerfile doesn't appear in the plan, because
+Compose doesn't compare those when deciding what to recreate.
 
 **⚠️ Shared host**: this stack shares the production droplet with
 anchor-weather, and `infrastructure/`'s Caddy terminates TLS for

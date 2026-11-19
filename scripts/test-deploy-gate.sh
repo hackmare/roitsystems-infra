@@ -118,5 +118,24 @@ uc env -u DEPLOY_COMMIT bash -c '. scripts/lib/update-checkout.sh; log() { :; };
 check 'without DEPLOY_COMMIT, the checkout fast-forwards to origin/main as before' \
   '[[ $(git -C "$W/repo" rev-parse HEAD) == $(git -C "$W/repo" rev-parse origin/main) ]]'
 
+# A dry run plans from origin/main's compose file and leaves the checkout alone (#160).
+(cd "$W/other" && git pull -q origin main && mkdir -p svc && echo "old: 1" > svc/docker-compose.yml \
+  && git add svc && git -c user.email=o@example.invalid -c user.name=o commit -qm "svc old" && git push -q origin HEAD:main)
+git -C "$W/repo" pull -q --ff-only origin main
+(cd "$W/other" && echo "new: 2" > svc/docker-compose.yml \
+  && git -c user.email=o@example.invalid -c user.name=o commit -qam "svc new" && git push -q origin HEAD:main)
+before=$(git -C "$W/repo" rev-parse HEAD)
+(cd "$W/repo"; log() { :; }; die() { echo "DIE $1"; exit 1; }; . scripts/lib/update-checkout.sh
+  update_checkout 1
+  f=$(plan_compose_file svc) && cat "$f" && [[ -d $PLAN_DIR ]] && echo "plandir=$PLAN_DIR"
+  plan_compose_file nowhere || echo "missing-refused") > "$W/plan" 2>&1
+check 'a dry run leaves the checkout where it is' '[[ $(git -C "$W/repo" rev-parse HEAD) == "$before" ]]'
+check "a dry run plans from origin/main's compose file, not the checkout's" \
+  'grep -qx "new: 2" "$W/plan" && grep -qx "old: 1" "$W/repo/svc/docker-compose.yml"'
+check 'a target with no compose file at origin/main is refused' \
+  'grep -q "not found at" "$W/plan" && grep -qx missing-refused "$W/plan"'
+check 'the temporary plan folder is removed when the dry run ends' \
+  'd=$(sed -n "s/^plandir=//p" "$W/plan"); [[ -n $d && ! -e $d ]]'
+
 echo "$([[ $failures -eq 0 ]] && echo 'all checks passed' || echo "$failures check(s) failed")"
 exit $(( failures > 0 ))

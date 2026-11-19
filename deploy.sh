@@ -30,7 +30,8 @@
 #   Targets: infrastructure | contact-inbox | image-converter
 #   No target = all three, in that order.
 #
-#   --dry-run              Show what would be pulled/recreated; change nothing.
+#   --dry-run              Show what a deploy of origin/main would recreate,
+#                          from main's compose files; change nothing.
 #   --allow-caddy-restart  Permit a Caddy container recreate (brief outage
 #                          for ALL domains on this host, anchor-weather
 #                          included). Only needed when caddy's compose
@@ -98,7 +99,12 @@ require_env() {
 
 compose_in() {  # compose_in <dir> <args...>
   local dir="$1"; shift
-  docker compose --project-directory "$REPO_ROOT/$dir" -f "$REPO_ROOT/$dir/docker-compose.yml" "$@"
+  local file="$REPO_ROOT/$dir/docker-compose.yml"
+  # A dry run plans from the commit a deploy would move to, not the checkout (#160).
+  if [ "$DRY_RUN" -eq 1 ]; then
+    file=$(plan_compose_file "$dir") || exit 1
+  fi
+  docker compose --project-directory "$REPO_ROOT/$dir" -f "$file" "$@"
 }
 
 # Converge one project. $3 (optional) = extra `up` args, e.g. --build.
