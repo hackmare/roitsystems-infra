@@ -19,7 +19,7 @@ services:
     # Vector Weather and the corporate sites without a reviewed PR. Dependabot proposes updates
     # (.github/dependabot.yml); a new image recreates Caddy, so a deploy needs Morgane's go
     # and --allow-caddy-restart (DEPLOY.md).
-    image: caddy:2.11.9@sha256:0c2243efcf437ab7f7a978f1027fcf0d4f9be8a75df27b1b3fbc5dbe0ffa8cf0
+    image: caddy:2.11.9@sha256:4851e54a46b206517c574821bb5cc67f170d2156041e9fbc4c9193b45e84a75b
     restart: unless-stopped
     ports:
       - "80:80"
