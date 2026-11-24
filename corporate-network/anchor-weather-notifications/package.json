@@ -9,6 +9,6 @@
   },
   "dependencies": {
     "nats": "^2.28.2",
-    "resend": "^6.38.1"
+    "resend": "^6.39.0"
   }
 }
